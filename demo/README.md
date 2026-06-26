@@ -127,6 +127,10 @@ demo/
 | 事务 | TRY...CATCH + TRAN |
 | 序列 | NEXT VALUE FOR |
 
+> ⚠️ **procedure 与 trigger 是替代方案**：`CreateOrder` 过程自行管理库存扣减，
+> `trg_OrderItem_AfterInsert` 则通过触发器自动扣减。两者展示不同模式，**不要同时启用**，
+> 否则库存会双扣。详见 `procedure.sql` 和 `trigger.sql` 头部注释。
+
 ### trigger.sql
 
 | 特性 | 覆盖 |
@@ -267,14 +271,24 @@ sqlcmd -S localhost -U sa -P 'YourPassword' -i demo/sqlserver/schema.sql
 sqlcmd -S localhost -U sa -P 'YourPassword' -i demo/sqlserver/data.sql
 # ...依次执行其他文件
 
-# 或使用 Python (SQLAlchemy)
+# 或使用 Python (SQLAlchemy 2.x + 正确的 GO 批处理)
 python -c "
+import re
 from sqlalchemy import create_engine, text
+
 engine = create_engine('mssql+pyodbc://sa:pass@localhost/db?driver=ODBC+Driver+18')
 with open('demo/sqlserver/schema.sql') as f:
-    for stmt in f.read().split('GO'):
-        if stmt.strip():
-            engine.execute(text(stmt))
+    content = f.read()
+
+# 按行匹配独立的 GO（忽略大小写，忽略注释/字符串内的 GO）
+batches = re.split(r'^GO\s*$', content, flags=re.MULTILINE | re.IGNORECASE)
+with engine.connect() as conn:
+    for batch in batches:
+        stmt = batch.strip()
+        if stmt:
+            conn.execute(text(stmt))
+    conn.commit()
+print('schema.sql 执行完成')
 "
 ```
 

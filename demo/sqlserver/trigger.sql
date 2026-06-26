@@ -2,6 +2,14 @@
 -- trigger.sql — DML Triggers (SQL Server)
 -- =============================================================================
 -- Covers: AFTER INSERT/UPDATE/DELETE, INSTEAD OF, INSERTED/DELETED tables
+--
+-- ⚠️  重要：trigger 与 procedure 是库存管理的两种替代方案，不要同时启用。
+--   - 方案 A（trigger 路径）：依赖 trg_OrderItem_AfterInsert 自动扣减库存，
+--     CreateOrder procedure 不应该再手动扣减。
+--   - 方案 B（procedure 路径）：由 CreateOrder 过程内手动管理库存和日志，
+--     需 DISABLE TRIGGER trg_OrderItem_AfterInsert ON OrderItem。
+--   本文件展示 trigger 模式的完整实现，procedure.sql 展示过程内模式。
+--   同时启用两者会导致库存双扣。
 -- =============================================================================
 
 -- =============================================================================

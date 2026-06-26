@@ -8,7 +8,7 @@
 -- -------------------------------------------------------------------------
 -- Customer Table
 -- -------------------------------------------------------------------------
-CREATE TABLE Customer (
+CREATE TABLE dbo.Customer (
     customer_id     INT IDENTITY(1,1) PRIMARY KEY,
     customer_code   VARCHAR(20)  NOT NULL,
     full_name       NVARCHAR(100) NOT NULL,
@@ -34,8 +34,8 @@ CREATE TABLE Customer (
 -- -------------------------------------------------------------------------
 -- Product Table
 -- -------------------------------------------------------------------------
-CREATE TABLE Product (
-    product_id      INT IDENTITY(1000,1) PRIMARY KEY,
+CREATE TABLE dbo.Product (
+    product_id      INT IDENTITY(1,1) PRIMARY KEY,
     product_code    VARCHAR(30)  NOT NULL,
     product_name    NVARCHAR(200) NOT NULL,
     category        NVARCHAR(50)  NOT NULL,
@@ -50,6 +50,7 @@ CREATE TABLE Product (
     is_active       BIT          NOT NULL DEFAULT 1,
     weight_kg       DECIMAL(8,3) NULL
                         CHECK (weight_kg IS NULL OR weight_kg > 0),
+    remark          NVARCHAR(500) NULL,
     created_at      DATETIME2    NOT NULL DEFAULT SYSDATETIME(),
     updated_at      DATETIME2    NULL,
 
@@ -61,7 +62,7 @@ CREATE TABLE Product (
 -- -------------------------------------------------------------------------
 -- Order Table
 -- -------------------------------------------------------------------------
-CREATE TABLE [Order] (
+CREATE TABLE dbo.[Order] (
     order_id        INT IDENTITY(1,1) PRIMARY KEY,
     order_no        VARCHAR(30)  NOT NULL,
     customer_id     INT          NOT NULL,
@@ -92,7 +93,7 @@ CREATE TABLE [Order] (
 -- -------------------------------------------------------------------------
 -- OrderItem Table
 -- -------------------------------------------------------------------------
-CREATE TABLE OrderItem (
+CREATE TABLE dbo.OrderItem (
     item_id         INT IDENTITY(1,1) PRIMARY KEY,
     order_id        INT          NOT NULL,
     product_id      INT          NOT NULL,
@@ -116,12 +117,15 @@ CREATE TABLE OrderItem (
 -- -------------------------------------------------------------------------
 -- InventoryLog Table (for trigger demo)
 -- -------------------------------------------------------------------------
-CREATE TABLE InventoryLog (
+CREATE TABLE dbo.InventoryLog (
     log_id          INT IDENTITY(1,1) PRIMARY KEY,
-    product_id      INT          NOT NULL,
+    product_id      INT          NULL,        -- NULL for order-level events (status change)
     order_id        INT          NULL,
     change_type     NVARCHAR(20) NOT NULL
-                        CHECK (change_type IN (N'入库', N'出库', N'订单取消', N'盘点调整')),
+                        CHECK (change_type IN (
+                            N'入库', N'出库', N'订单取消', N'盘点调整',
+                            N'订单删除', N'状态变更', N'库存预警'
+                        )),
     quantity_change INT          NOT NULL,
     before_stock    INT          NOT NULL,
     after_stock     INT          NOT NULL,
@@ -130,7 +134,7 @@ CREATE TABLE InventoryLog (
 
     -- Constraints
     CONSTRAINT fk_invlog_product FOREIGN KEY (product_id)
-        REFERENCES Product(product_id)
+        REFERENCES dbo.Product(product_id)
 );
 
 -- -------------------------------------------------------------------------
