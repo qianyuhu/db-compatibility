@@ -1,0 +1,32 @@
+# ============================================================
+# Phase 1 · KingbaseES 验证数据库
+# ============================================================
+# 启动: docker compose -f docker/compose.kingbasees.yml up -d
+# 停止: docker compose -f docker/compose.kingbasees.yml down -v
+#
+# KingbaseES V8R6 使用 PostgreSQL 协议 (端口 54321)
+# 系统表使用 sys_* 命名 (非 pg_*)
+# Python 驱动: psycopg2 (不需要专用驱动)
+# ============================================================
+
+services:
+  kingbasees:
+    image: registry.cn-beijing.aliyuncs.com/dbdemo/kingbasees:v8r6
+    container_name: dbdemo-kingbasees
+    environment:
+      ENABLE_CI: "yes"
+      DB_USER: ${APP_KINGBASEES_USER:-system}
+      DB_PASSWORD: ${APP_KINGBASEES_PASSWORD:-123456}
+      DB_MODE: pg            # PostgreSQL 兼容模式
+    ports:
+      - "${APP_KINGBASEES_PORT:-54321}:54321"
+    volumes:
+      - kingbasees-data:/home/kingbase/userdata
+    healthcheck:
+      test: ["CMD", "ksql", "-U", "system", "-d", "test", "-c", "SELECT 1"]
+      interval: 10s
+      retries: 10
+      start_period: 40s
+
+volumes:
+  kingbasees-data:

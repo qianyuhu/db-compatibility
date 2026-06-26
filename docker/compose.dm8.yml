@@ -1,0 +1,34 @@
+# ============================================================
+# Phase 1 · DM8 (达梦) 验证数据库
+# ============================================================
+# 启动: docker compose -f docker/compose.dm8.yml up -d
+# 停止: docker compose -f docker/compose.dm8.yml down -v
+#
+# DM8 默认端口 5236
+# 默认账户: SYSDBA / SYSDBA001
+# Python 驱动: dmPython (需要 DM8 客户端库)
+# SQLAlchemy 方言: dmSQLAlchemy (达梦官方维护)
+# ============================================================
+
+services:
+  dm8:
+    image: registry.cn-beijing.aliyuncs.com/dbdemo/dm8:latest
+    container_name: dbdemo-dm8
+    environment:
+      LD_LIBRARY_PATH: /opt/dmdbms/bin
+      PAGE_SIZE: 16
+      EXTENT_SIZE: 32
+      CASE_SENSITIVE: 1        # 大小写敏感
+      UNICODE_FLAG: 1          # UTF-8 编码
+    ports:
+      - "${APP_DM8_PORT:-5236}:5236"
+    volumes:
+      - dm8-data:/opt/dmdbms/data
+    healthcheck:
+      test: ["CMD", "/opt/dmdbms/bin/disql", "SYSDBA/SYSDBA001@localhost:5236", "-c", "SELECT 1"]
+      interval: 15s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  dm8-data:

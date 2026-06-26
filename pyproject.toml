@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "db-compatibility-demo"
+version = "0.1.0"
+description = "Phase 1 — 三库兼容性事实收集 (MSSQL / KingbaseES / DM8)"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy>=2.0.23",
+    "alembic>=1.13.0",
+    "pyodbc>=5.0.0",
+    "psycopg2-binary>=2.9.9",
+    "python-dotenv>=1.0.0",
+    "pydantic-settings>=2.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-xdist>=3.5.0",
+]
+# dm8: dmPython + dmSQLAlchemy — 需要 DM8 客户端库，单独安装
+# pip install dmPython dmSQLAlchemy
+dm = [
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = ["-v", "--tb=short"]
+markers = [
+    "mssql: tests requiring MSSQL connection",
+    "kingbasees: tests requiring KingbaseES connection",
+    "dm8: tests requiring DM8 connection",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
