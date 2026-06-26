@@ -32,7 +32,7 @@ Customer  ──1:N──>  Order  ──1:N──>  OrderItem  ──N:1──>
 | Customer | 25 |
 | Product | 55（8 个品类） |
 | Order | 110（分布 2024-01 ~ 2024-11） |
-| OrderItem | ~330（每订单约 3 项） |
+| OrderItem | 310（每订单 1~4 项） |
 
 ## 目录结构
 
@@ -304,20 +304,20 @@ pytest tests/ -v -k "sqlserver or mysql"
 
 ## 文件大小统计
 
-| 文件 | 行数（约） | 大小（约） |
-|------|----------|----------|
-| schema.sql | 144 | 6.7 KB |
-| data.sql | 273 | 17 KB |
-| crud.sql | 168 | 6.3 KB |
-| query.sql | 372 | 12 KB |
-| transaction.sql | 215 | 7.6 KB |
-| procedure.sql | 287 | 9.7 KB |
-| trigger.sql | 196 | 6.3 KB |
-| function.sql | 197 | 6.8 KB |
-| view.sql | 162 | 5.8 KB |
-| index.sql | 190 | 7.1 KB |
-| advanced.sql | 476 | 16 KB |
-| **合计** | **~2,680** | **~101 KB** |
+| 文件 | 行数 | 大小 |
+|------|------|------|
+| schema.sql | 169 | 7.7 KB |
+| data.sql | 417 | 34 KB |
+| crud.sql | 187 | 7.9 KB |
+| query.sql | 531 | 17 KB |
+| transaction.sql | 217 | 8.7 KB |
+| procedure.sql | 391 | 13 KB |
+| trigger.sql | 271 | 8.8 KB |
+| function.sql | 247 | 8.3 KB |
+| view.sql | 205 | 8.6 KB |
+| index.sql | 215 | 8.2 KB |
+| advanced.sql | 672 | 22 KB |
+| **合计** | **3,522** | **~144 KB** |
 
 ## 设计原则
 
