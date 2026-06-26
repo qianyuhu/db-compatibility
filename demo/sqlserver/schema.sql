@@ -86,7 +86,7 @@ CREATE TABLE dbo.[Order] (
     -- Constraints
     CONSTRAINT uq_order_no UNIQUE (order_no),
     CONSTRAINT fk_order_customer FOREIGN KEY (customer_id)
-        REFERENCES Customer(customer_id),
+        REFERENCES dbo.Customer(customer_id),
     CONSTRAINT ck_order_amount CHECK (actual_amount = total_amount - discount_amount)
 );
 
@@ -108,9 +108,9 @@ CREATE TABLE dbo.OrderItem (
 
     -- Constraints
     CONSTRAINT fk_orderitem_order FOREIGN KEY (order_id)
-        REFERENCES [Order](order_id),
+        REFERENCES dbo.[Order](order_id),
     CONSTRAINT fk_orderitem_product FOREIGN KEY (product_id)
-        REFERENCES Product(product_id),
+        REFERENCES dbo.Product(product_id),
     CONSTRAINT ck_orderitem_quantity CHECK (quantity <= 9999)
 );
 
