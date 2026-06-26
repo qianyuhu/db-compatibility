@@ -5,15 +5,21 @@ Phase 1 约束:
 - 不做任何兼容层抽象
 - 仅返回 SQLAlchemy 连接 URL
 - 各数据库差异由测试自行发现
+
+环境文件优先级: .env < .env.local（后者覆盖前者）
+密码安全: 使用 sqlalchemy.engine.URL.create() 而非 f-string 拼接，
+          自动处理 @ # / : 等特殊字符。
 """
 
 from pydantic_settings import BaseSettings
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
     model_config = {
-        "env_file": ".env",
+        "env_file": (".env", ".env.local"),  # 后者覆盖前者
         "env_prefix": "APP_",
+        "extra": "ignore",  # 忽略未知环境变量
     }
 
     # ---- 当前激活的数据库 ----
@@ -40,6 +46,8 @@ class Settings(BaseSettings):
     dm8_user: str = "SYSDBA"
     dm8_password: str = ""
 
+    # ---- URL 生成 (使用 SQLAlchemy URL.create 防特殊字符) ----
+
     @property
     def database_url(self) -> str:
         """根据 active_db 自动生成 SQLAlchemy 连接 URL。"""
@@ -53,30 +61,44 @@ class Settings(BaseSettings):
 
     @property
     def _mssql_url(self) -> str:
-        return (
-            f"mssql+pyodbc://{self.mssql_user}:{self.mssql_password}"
-            f"@{self.mssql_host}:{self.mssql_port}/{self.mssql_database}"
-            "?driver=ODBC+Driver+18+for+SQL+Server"
-            "&TrustServerCertificate=yes"
-            "&Encrypt=no"
-        )
+        return URL.create(
+            "mssql+pyodbc",
+            username=self.mssql_user,
+            password=self.mssql_password,
+            host=self.mssql_host,
+            port=self.mssql_port,
+            database=self.mssql_database,
+            query={
+                "driver": "ODBC Driver 18 for SQL Server",
+                "TrustServerCertificate": "yes",
+                "Encrypt": "no",
+            },
+        ).render_as_string(hide_password=False)
 
     @property
     def _kingbasees_url(self) -> str:
         # KingbaseES 使用 PostgreSQL 协议 — 直接用 psycopg2 驱动
-        return (
-            f"postgresql+psycopg2://{self.kingbasees_user}:{self.kingbasees_password}"
-            f"@{self.kingbasees_host}:{self.kingbasees_port}/{self.kingbasees_database}"
-            "?options=-c+client_encoding=utf8"
-        )
+        return URL.create(
+            "postgresql+psycopg2",
+            username=self.kingbasees_user,
+            password=self.kingbasees_password,
+            host=self.kingbasees_host,
+            port=self.kingbasees_port,
+            database=self.kingbasees_database,
+            query={"options": "-c client_encoding=utf8"},
+        ).render_as_string(hide_password=False)
 
     @property
     def _dm8_url(self) -> str:
         # DM8 官方 dmPython 驱动
-        return (
-            f"dm+dmPython://{self.dm8_user}:{self.dm8_password}"
-            f"@{self.dm8_host}:{self.dm8_port}/{self.dm8_database}"
-        )
+        return URL.create(
+            "dm+dmPython",
+            username=self.dm8_user,
+            password=self.dm8_password,
+            host=self.dm8_host,
+            port=self.dm8_port,
+            database=self.dm8_database,
+        ).render_as_string(hide_password=False)
 
 
 settings = Settings()

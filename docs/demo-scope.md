@@ -131,18 +131,20 @@ db-compatibility-demo/
 
 ### 1.2 Product 模型（扩展类型覆盖）
 
+> **实现状态**：当前骨架实现 6 种基础类型。扩展类型（Text/JSON/LargeBinary/String(36)）在后续迭代中逐步加入。
+
 ```python
-# models/product.py
+# models/product.py — 当前骨架（6 种基础类型）
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean,
-    DateTime, Text, JSON, LargeBinary, func,
+    DateTime, func,
 )
 from .base import Base
 
 class Product(Base):
     __tablename__ = "products"
 
-    # 基础类型
+    # 基础类型（当前已实现）
     id          = Column(Integer, primary_key=True, autoincrement=True)
     code        = Column(String(50), unique=True, nullable=False, index=True)
     name        = Column(String(200), nullable=False)
@@ -150,14 +152,17 @@ class Product(Base):
     is_active   = Column(Boolean, default=True, nullable=False)
     created_at  = Column(DateTime, server_default=func.now(), nullable=False)
 
-    # 扩展类型（国产化迁移易出问题的类型）
-    description = Column(Text, nullable=True)          # Text → MSSQL NVARCHAR(MAX) / PG TEXT / DM8 CLOB
-    extra_data  = Column(JSON, nullable=True)           # JSON → MSSQL 无原生 / PG JSONB / DM8 JSON
-    file_hash   = Column(String(36), nullable=True)     # UUID 模拟 → MSSQL UNIQUEIDENTIFIER / PG UUID / DM8 VARCHAR2(36)
-    thumbnail   = Column(LargeBinary, nullable=True)    # 二进制 → MSSQL VARBINARY(MAX) / PG BYTEA / DM8 BLOB
+    # 扩展类型（后续迭代加入 — 国产化迁移易出问题的类型）
+    # description = Column(Text, nullable=True)          # Text → MSSQL NVARCHAR(MAX) / PG TEXT / DM8 CLOB
+    # extra_data  = Column(JSON, nullable=True)           # JSON → MSSQL 无原生 / PG JSONB / DM8 JSON
+    # file_hash   = Column(String(36), nullable=True)     # UUID 模拟 → MSSQL UNIQUEIDENTIFIER / PG UUID / DM8 VARCHAR2(36)
+    # thumbnail   = Column(LargeBinary, nullable=True)    # 二进制 → MSSQL VARBINARY(MAX) / PG BYTEA / DM8 BLOB
 ```
 
-**10 种字段类型覆盖**：Integer, String(50), String(200), Numeric, Boolean, DateTime, Text, JSON, String(36)(UUID模拟), LargeBinary。
+**当前字段类型覆盖（6 种）**：Integer, String(50), String(200), Numeric, Boolean, DateTime。
+
+**目标覆盖（10 种）**：增加 Text, JSON, String(36)(UUID模拟), LargeBinary — 待后续迭代。
+
 
 **不是要求全部通过。而是验证：不支持时如何报错、能否被 Phase 2 的兼容层解决。**
 

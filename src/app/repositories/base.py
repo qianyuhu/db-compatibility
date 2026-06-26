@@ -10,7 +10,7 @@ MSSQL 注意:
 - list() 中的 OFFSET/LIMIT 必须伴随 ORDER BY（MSSQL 硬要求）
 """
 
-from typing import Optional, Sequence, TypeVar
+from typing import Generic, Optional, Sequence, TypeVar
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session

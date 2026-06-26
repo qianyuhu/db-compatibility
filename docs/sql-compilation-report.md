@@ -78,7 +78,7 @@ INSERT INTO products (code, name, price, is_active, created_at) OUTPUT inserted.
 ### kingbasees
 
 ```sql
-INSERT INTO products (code, name, price, is_active, created_at) VALUES ('P001', '测试', 99.99, 1, '2026-06-01 00:00:00+00:00') RETURNING products.id
+INSERT INTO products (code, name, price, is_active, created_at) VALUES ('P001', '测试', 99.99, true, '2026-06-01 00:00:00+00:00') RETURNING products.id
 ```
 
 ---
@@ -94,7 +94,7 @@ INSERT INTO products (code, name, price, is_active) VALUES ('B001', 'Batch 1', 1
 ### kingbasees
 
 ```sql
-INSERT INTO products (code, name, price, is_active) VALUES ('B001', 'Batch 1', 10, 1), ('B002', 'Batch 2', 20, 0)
+INSERT INTO products (code, name, price, is_active) VALUES ('B001', 'Batch 1', 10, true), ('B002', 'Batch 2', 20, false)
 ```
 
 ---

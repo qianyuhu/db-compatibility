@@ -11,6 +11,7 @@ import os
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Integer,
@@ -38,7 +39,7 @@ def _build_test_table():
         Column("code", String(50), nullable=False),
         Column("name", String(200), nullable=False),
         Column("price", Numeric(10, 2), nullable=False),
-        Column("is_active", Integer),  # BIT / BOOLEAN / SMALLINT
+        Column("is_active", Boolean),  # BIT (MSSQL) / BOOLEAN (PG) / SMALLINT (DM8)
         Column("created_at", DateTime),
     )
 
@@ -125,7 +126,7 @@ class TestSQLCompile:
             code="P001",
             name="Test",
             price=99.99,
-            is_active=1,
+            is_active=True,
             created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
         results = _compile_all(stmt, "INSERT")
@@ -135,8 +136,8 @@ class TestSQLCompile:
         """INSERT 批量 — .values([{...}, {...}])"""
         table = _build_test_table()
         stmt = insert(table).values([
-            {"code": "B001", "name": "Batch 1", "price": 10, "is_active": 1},
-            {"code": "B002", "name": "Batch 2", "price": 20, "is_active": 0},
+            {"code": "B001", "name": "Batch 1", "price": 10, "is_active": True},
+            {"code": "B002", "name": "Batch 2", "price": 20, "is_active": False},
         ])
         results = _compile_all(stmt, "INSERT bulk")
         _print_results("INSERT bulk (2 rows)", results)
@@ -208,8 +209,8 @@ def test_generate_compile_report():
         (
             "INSERT bulk (2 rows)",
             insert(table).values([
-                {"code": "B001", "name": "Batch 1", "price": 10, "is_active": 1},
-                {"code": "B002", "name": "Batch 2", "price": 20, "is_active": 0},
+                {"code": "B001", "name": "Batch 1", "price": 10, "is_active": True},
+                {"code": "B002", "name": "Batch 2", "price": 20, "is_active": False},
             ]),
         ),
         (

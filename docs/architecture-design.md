@@ -195,18 +195,20 @@ def get_session() -> Session:
 
 ### 5.4 模型
 
+> **实现状态**：初始骨架实现了 6 种基础类型（id/code/name/price/is_active/created_at）。
+> 扩展类型（Text/JSON/LargeBinary/String(36)）将在 Phase 1 后续迭代中加入。
+> 此文档描述最终目标，非当前代码快照。
+
 ```python
-# models/product.py
+# models/product.py — 当前骨架（6 种基础类型）
 from sqlalchemy import (
-    Column, Integer, String, Numeric, Boolean,
-    DateTime, Text, JSON, LargeBinary, func,
+    Column, Integer, String, Numeric, Boolean, DateTime, func,
 )
 from .base import Base
 
 class Product(Base):
     __tablename__ = "products"
 
-    # 基础类型（6种）
     id          = Column(Integer, primary_key=True, autoincrement=True)
     code        = Column(String(50), unique=True, nullable=False, index=True)
     name        = Column(String(200), nullable=False)
@@ -214,11 +216,11 @@ class Product(Base):
     is_active   = Column(Boolean, default=True, nullable=False)
     created_at  = Column(DateTime, server_default=func.now(), nullable=False)
 
-    # 扩展类型（4种 — 国产化迁移高风险类型）
-    description = Column(Text, nullable=True)
-    extra_data  = Column(JSON, nullable=True)
-    file_hash   = Column(String(36), nullable=True)    # UUID 模拟
-    thumbnail   = Column(LargeBinary, nullable=True)
+    # --- 以下字段在后续迭代加入 ---
+    # description = Column(Text, nullable=True)
+    # extra_data  = Column(JSON, nullable=True)
+    # file_hash   = Column(String(36), nullable=True)    # UUID 模拟
+    # thumbnail   = Column(LargeBinary, nullable=True)
 ```
 
 使用最朴素的 SQLAlchemy 泛型，不做任何 `with_variant` 或 `TypeDecorator` 适配。
