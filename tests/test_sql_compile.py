@@ -9,6 +9,7 @@ Phase 1 · SQL Compilation 对比。
 
 import os
 from datetime import datetime, timezone
+from typing import Dict, List
 
 from sqlalchemy import (
     Boolean,
@@ -81,7 +82,7 @@ def _compile(stmt, dialect_name: str) -> str:
         return f"-- {dialect_name}: COMPILE ERROR: {type(e).__name__}: {e}"
 
 
-def _compile_all(stmt, label: str) -> dict[str, str]:
+def _compile_all(stmt, label: str) -> Dict[str, str]:
     """对全部可用 dialect 编译同一条语句。"""
     return {db: _compile(stmt, db) for db in DIALECTS}
 
@@ -172,7 +173,7 @@ class TestSQLCompile:
 # 报告生成
 # ============================================================
 
-def _print_results(label: str, results: dict[str, str]):
+def _print_results(label: str, results: Dict[str, str]):
     """打印编译结果到 stdout（pytest -s 可见）。"""
     print(f"\n{'='*60}")
     print(f"  {label}")
@@ -224,7 +225,7 @@ def test_generate_compile_report():
         ),
     ]
 
-    lines: list[str] = []
+    lines: List[str] = []
     lines.append("# SQL Compilation Report")
     lines.append("")
     lines.append("> Phase 1 · 自动生成 · 三库 SQL 编译对比")

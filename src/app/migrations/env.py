@@ -30,8 +30,8 @@ if config.config_file_name is not None:
 
 # ---- 动态 URL 注入 ----
 # 绕过 alembic.ini 中硬编码的 sqlalchemy.url
-# 从 Settings 对象动态生成连接 URL
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# 使用 attributes 避免 configparser 对 URL 中 % 的插值解析
+config.attributes["sqlalchemy.url"] = settings.database_url
 
 # ---- MetaData ----
 target_metadata = Base.metadata
@@ -57,7 +57,7 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        url=config.get_main_option("sqlalchemy.url"),
+        url=config.attributes.get("sqlalchemy.url"),
     )
 
     with connectable.connect() as connection:

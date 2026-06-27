@@ -9,6 +9,8 @@ Phase 1 约束:
 """
 
 import os
+from typing import Dict, List, Optional, Union
+
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
@@ -22,10 +24,11 @@ from app.models.product import Product  # noqa: F401 — 确保模型注册
 # 连接探测
 # ============================================================
 
-_CAN_CONNECT_CACHE: dict[str, bool | str] = {}
+from typing import Dict, Union
+_CAN_CONNECT_CACHE: Dict[str, Union[bool, str]] = {}
 
 
-def _probe_database(db_name: str) -> bool | str:
+def _probe_database(db_name: str) -> Union[bool, str]:
     """探测数据库是否可达。返回 True 或错误信息字符串。"""
     if db_name in _CAN_CONNECT_CACHE:
         return _CAN_CONNECT_CACHE[db_name]
@@ -49,7 +52,7 @@ def _probe_database(db_name: str) -> bool | str:
         return msg
 
 
-def _get_available_dbs() -> list[str]:
+def _get_available_dbs() -> List[str]:
     """返回当前可访问的数据库列表（全部探测）。
 
     MSSQL 需要: unixODBC + ODBC Driver 18 for SQL Server
@@ -68,7 +71,7 @@ def _get_available_dbs() -> list[str]:
 # Alembic 辅助
 # ============================================================
 
-def _run_alembic_upgrade(db_name: str) -> Exception | None:
+def _run_alembic_upgrade(db_name: str) -> Optional[Exception]:
     """执行 alembic upgrade head。返回 None 表示成功，否则返回异常。"""
     from alembic.config import Config as AlembicConfig
     from alembic import command
