@@ -1,11 +1,16 @@
 import { useState, useCallback } from "react";
 import { ConfigProvider, App as AntApp, theme, Tabs } from "antd";
-import { CodeOutlined, SwapOutlined } from "@ant-design/icons";
+import {
+  CodeOutlined,
+  SwapOutlined,
+  ExperimentOutlined,
+} from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
 import SqlConsole from "./pages/SqlConsole";
 import SqlCompare from "./pages/SqlCompare";
+import SqlScore from "./pages/SqlScore";
 
-type TabKey = "console" | "compare";
+type TabKey = "console" | "compare" | "score";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("console");
@@ -56,6 +61,15 @@ export default function App() {
                   </span>
                 ),
               },
+              {
+                key: "score",
+                label: (
+                  <span>
+                    <ExperimentOutlined />
+                    SQL Score
+                  </span>
+                ),
+              },
             ]}
           />
         </div>
@@ -66,6 +80,9 @@ export default function App() {
         </div>
         <div style={{ display: activeTab === "compare" ? "block" : "none" }}>
           <SqlCompare />
+        </div>
+        <div style={{ display: activeTab === "score" ? "block" : "none" }}>
+          <SqlScore />
         </div>
       </AntApp>
     </ConfigProvider>

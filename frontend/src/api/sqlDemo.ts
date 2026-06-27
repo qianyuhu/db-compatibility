@@ -2,7 +2,7 @@
  * SQL Demo API client — communicates with the FastAPI backend.
  */
 
-const API_BASE = "http://localhost:8000";
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 export interface ExecuteRequest {
   db_type: "mssql" | "kingbasees" | "dm8";
@@ -133,3 +133,15 @@ export async function compareSql(
 
   return res.json();
 }
+
+// =========================================================================
+// SQL Score API — re-exports from dedicated sqlScore module
+// =========================================================================
+
+export { scoreSql } from "./sqlScore";
+export type {
+  ScoreRequest,
+  ScoreBreakdown,
+  Finding,
+  ScoreResponse,
+} from "./sqlScore";

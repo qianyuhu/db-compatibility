@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.sql_demo.compare_router import router as sql_compare_router
 from app.api.sql_demo.router import router as sql_demo_router
+from app.api.sql_compare.score_router import router as sql_score_router
 
 app = FastAPI(
     title="SQL Demo — Multi-Database Execution Platform",
@@ -41,6 +42,7 @@ app.add_middleware(
 # 注册路由
 app.include_router(sql_demo_router)
 app.include_router(sql_compare_router)
+app.include_router(sql_score_router)
 
 
 @app.get("/api/health", tags=["health"])
