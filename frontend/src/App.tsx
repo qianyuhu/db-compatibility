@@ -4,13 +4,36 @@ import {
   CodeOutlined,
   SwapOutlined,
   ExperimentOutlined,
+  ThunderboltOutlined,
+  BugOutlined,
+  RocketOutlined,
+  PlayCircleOutlined,
+  DashboardOutlined,
+  ShoppingCartOutlined,
+  BarcodeOutlined,
+  DeploymentUnitOutlined,
+  TeamOutlined,
+  AppstoreOutlined,
+  BarChartOutlined,
 } from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
 import SqlConsole from "./pages/SqlConsole";
 import SqlCompare from "./pages/SqlCompare";
 import SqlScore from "./pages/SqlScore";
+import SqlRewrite from "./pages/SqlRewrite";
+import SqlDiagnostics from "./pages/SqlDiagnostics";
+import SqlMigrationPlan from "./pages/SqlMigrationPlan";
+import SqlSimulation from "./pages/SqlSimulation";
+import SqlKernel from "./pages/SqlKernel";
+import OrderManagement from "./pages/OrderManagement";
+import InventoryQuery from "./pages/InventoryQuery";
+import MigrationDashboard from "./pages/MigrationDashboard";
+import CustomerManagement from "./pages/CustomerManagement";
+import ProductManagement from "./pages/ProductManagement";
+import SQLCoverageDashboard from "./pages/SQLCoverageDashboard";
+import ReportQueryPage from "./pages/ReportQueryPage";
 
-type TabKey = "console" | "compare" | "score";
+type TabKey = "console" | "compare" | "score" | "rewrite" | "diagnostics" | "migration" | "simulation" | "kernel" | "orders" | "inventory" | "erp-migration" | "customers" | "products" | "coverage" | "reports";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("console");
@@ -70,6 +93,114 @@ export default function App() {
                   </span>
                 ),
               },
+              {
+                key: "rewrite",
+                label: (
+                  <span>
+                    <ThunderboltOutlined />
+                    SQL Rewrite
+                  </span>
+                ),
+              },
+              {
+                key: "diagnostics",
+                label: (
+                  <span>
+                    <BugOutlined />
+                    SQL Diagnostics
+                  </span>
+                ),
+              },
+              {
+                key: "migration",
+                label: (
+                  <span>
+                    <RocketOutlined />
+                    Migration Plan
+                  </span>
+                ),
+              },
+              {
+                key: "simulation",
+                label: (
+                  <span>
+                    <PlayCircleOutlined />
+                    Simulation
+                  </span>
+                ),
+              },
+              {
+                key: "kernel",
+                label: (
+                  <span>
+                    <DashboardOutlined />
+                    Kernel
+                  </span>
+                ),
+              },
+              {
+                key: "orders",
+                label: (
+                  <span>
+                    <ShoppingCartOutlined />
+                    Orders
+                  </span>
+                ),
+              },
+              {
+                key: "inventory",
+                label: (
+                  <span>
+                    <BarcodeOutlined />
+                    Inventory
+                  </span>
+                ),
+              },
+              {
+                key: "erp-migration",
+                label: (
+                  <span>
+                    <DeploymentUnitOutlined />
+                    ERP Migration
+                  </span>
+                ),
+              },
+              {
+                key: "customers",
+                label: (
+                  <span>
+                    <TeamOutlined />
+                    Customers
+                  </span>
+                ),
+              },
+              {
+                key: "products",
+                label: (
+                  <span>
+                    <AppstoreOutlined />
+                    Products
+                  </span>
+                ),
+              },
+              {
+                key: "coverage",
+                label: (
+                  <span>
+                    <DashboardOutlined />
+                    SQL Coverage
+                  </span>
+                ),
+              },
+              {
+                key: "reports",
+                label: (
+                  <span>
+                    <BarChartOutlined />
+                    Reports
+                  </span>
+                ),
+              },
             ]}
           />
         </div>
@@ -83,6 +214,42 @@ export default function App() {
         </div>
         <div style={{ display: activeTab === "score" ? "block" : "none" }}>
           <SqlScore />
+        </div>
+        <div style={{ display: activeTab === "rewrite" ? "block" : "none" }}>
+          <SqlRewrite />
+        </div>
+        <div style={{ display: activeTab === "diagnostics" ? "block" : "none" }}>
+          <SqlDiagnostics />
+        </div>
+        <div style={{ display: activeTab === "migration" ? "block" : "none" }}>
+          <SqlMigrationPlan />
+        </div>
+        <div style={{ display: activeTab === "simulation" ? "block" : "none" }}>
+          <SqlSimulation />
+        </div>
+        <div style={{ display: activeTab === "kernel" ? "block" : "none" }}>
+          <SqlKernel />
+        </div>
+        <div style={{ display: activeTab === "orders" ? "block" : "none" }}>
+          <OrderManagement />
+        </div>
+        <div style={{ display: activeTab === "inventory" ? "block" : "none" }}>
+          <InventoryQuery />
+        </div>
+        <div style={{ display: activeTab === "erp-migration" ? "block" : "none" }}>
+          <MigrationDashboard />
+        </div>
+        <div style={{ display: activeTab === "customers" ? "block" : "none" }}>
+          <CustomerManagement />
+        </div>
+        <div style={{ display: activeTab === "products" ? "block" : "none" }}>
+          <ProductManagement />
+        </div>
+        <div style={{ display: activeTab === "coverage" ? "block" : "none" }}>
+          <SQLCoverageDashboard />
+        </div>
+        <div style={{ display: activeTab === "reports" ? "block" : "none" }}>
+          <ReportQueryPage />
         </div>
       </AntApp>
     </ConfigProvider>

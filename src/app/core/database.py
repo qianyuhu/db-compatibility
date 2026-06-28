@@ -158,11 +158,12 @@ def get_db():
             conn.close()
 
 
-def get_session() -> Session:
-    """返回一个新的同步 SQLAlchemy Session（仅 MSSQL / DM8）。"""
+def get_session():
+    """返回一个新的同步 SQLAlchemy Session（仅 MSSQL / DM8）。
+
+    KingbaseES 返回 None — 业务服务应通过 DualDbExecutor 执行 SQL。
+    """
     factory = get_session_local()
     if factory is None:
-        raise RuntimeError(
-            "KingbaseES 不支持 SQLAlchemy Session。请使用 get_db() 或 get_raw_connection()。"
-        )
+        return None
     return factory()

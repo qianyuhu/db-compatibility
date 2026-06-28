@@ -145,3 +145,68 @@ export type {
   Finding,
   ScoreResponse,
 } from "./sqlScore";
+
+// =========================================================================
+// SQL Rewrite API — re-exports from dedicated sqlRewrite module
+// =========================================================================
+
+export { rewriteSql } from "./sqlRewrite";
+export type {
+  RewriteRequest,
+  AppliedRule,
+  RewriteResponse,
+} from "./sqlRewrite";
+
+// =========================================================================
+// SQL Diagnostics API — re-exports from dedicated sqlDiagnostics module
+// =========================================================================
+
+export { diagnoseSql } from "./sqlDiagnostics";
+export type {
+  DiagnoseRequest,
+  DiagnoseResponse,
+  TableDiagnostic,
+  ColumnDiagnostic,
+  FunctionDiagnostic,
+  JoinDiagnostic,
+  DiagnoseSummary,
+  RiskSummary,
+  RiskLevel,
+} from "./sqlDiagnostics";
+
+// =========================================================================
+// SQL Migration API — re-exports from dedicated sqlMigration module
+// =========================================================================
+
+export { getMigrationPlan } from "./sqlMigration";
+export type {
+  MigrationPlanRequest,
+  MigrationPlanResponse,
+  ImpactAnalysis,
+  MigrationStep,
+  MigrationPlan,
+  Recommendation,
+  StepAction,
+} from "./sqlMigration";
+
+// =========================================================================
+// SQL Simulation API — re-exports from dedicated sqlSimulation module
+// =========================================================================
+
+export { simulateMigration } from "./sqlSimulation";
+export type {
+  SimulationRequest,
+  SimulationResponse,
+  SimulationResult,
+  SimulationVerdict,
+  FailurePoint,
+  FailureType,
+  TableDrift,
+  DriftLevel,
+  RowLevelDiff,
+  QueryBehavior,
+  EquivalenceDetail,
+  CardinalityEstimate,
+  ExecutionModel,
+  RiskLevel as SimulationRiskLevel,
+} from "./sqlSimulation";

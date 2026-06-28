@@ -175,7 +175,7 @@ export default function SqlScore() {
               ]}
             />
           </div>
-          <Divider type="vertical" />
+          <Divider orientation="vertical" />
           <Button
             type="primary"
             icon={<TrophyOutlined />}
@@ -201,7 +201,7 @@ export default function SqlScore() {
       </Card>
 
       {/* Results area */}
-      <Spin spinning={loading} tip="正在执行 SQL 并计算兼容性评分...">
+      <Spin spinning={loading} description="正在执行 SQL 并计算兼容性评分...">
         {result === null && error === null ? (
           <Card styles={{ body: { padding: 48 } }} style={{ borderRadius: 12 }}>
             <div style={{ textAlign: "center", color: "#bfbfbf" }}>

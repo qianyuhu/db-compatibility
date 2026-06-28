@@ -13,7 +13,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.sql_demo.compare_router import router as sql_compare_router
 from app.api.sql_demo.router import router as sql_demo_router
+from app.api.sql_compare.rewrite.rewrite_router import router as sql_rewrite_router
 from app.api.sql_compare.score_router import router as sql_score_router
+from app.api.sql_diagnostics.diagnose_router import router as sql_diagnostics_router
+from app.api.sql_migration.migration_router import router as sql_migration_router
+from app.api.sql_simulation.simulation_router import router as sql_simulation_router
+from app.core.sql_kernel.kernel_router import router as sql_kernel_router
+from app.api.business.order_router import router as business_order_router
+from app.api.business.inventory_router import router as business_inventory_router
+from app.api.business.migration_router import router as business_migration_router
+from app.api.business.customer_router import router as business_customer_router
+from app.api.business.product_router import router as business_product_router
+from app.api.business.report_router import router as business_report_router
 
 app = FastAPI(
     title="SQL Demo — Multi-Database Execution Platform",
@@ -32,6 +43,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
         "http://localhost:3000",
     ],
     allow_credentials=True,
@@ -43,6 +58,17 @@ app.add_middleware(
 app.include_router(sql_demo_router)
 app.include_router(sql_compare_router)
 app.include_router(sql_score_router)
+app.include_router(sql_rewrite_router)
+app.include_router(sql_diagnostics_router)
+app.include_router(sql_migration_router)
+app.include_router(sql_simulation_router)
+app.include_router(sql_kernel_router)
+app.include_router(business_order_router)
+app.include_router(business_inventory_router)
+app.include_router(business_migration_router)
+app.include_router(business_customer_router)
+app.include_router(business_product_router)
+app.include_router(business_report_router)
 
 
 @app.get("/api/health", tags=["health"])

@@ -18,6 +18,9 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.models.base import Base
 from app.models.product import Product  # noqa: F401 — 确保模型注册
+from app.models.customer import Customer  # noqa: F401
+from app.models.order import Order, OrderItem  # noqa: F401
+from app.models.inventory import Inventory  # noqa: F401
 
 
 # ============================================================

@@ -183,7 +183,7 @@ export default function SqlCompare() {
               ]}
             />
           </div>
-          <Divider type="vertical" />
+          <Divider orientation="vertical" />
           <Button
             type="primary"
             icon={<PlayCircleOutlined />}
@@ -314,7 +314,7 @@ export default function SqlCompare() {
       )}
 
       {/* 对比结果 */}
-      <Spin spinning={loading} tip="正在并行执行查询...">
+      <Spin spinning={loading} description="正在并行执行查询...">
         {result === null ? (
           <Card styles={{ body: { padding: 48 } }}>
             <div style={{ textAlign: "center", color: "#bfbfbf" }}>

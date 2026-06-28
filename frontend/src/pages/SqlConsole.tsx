@@ -110,7 +110,7 @@ export default function SqlConsole() {
       >
         <Space wrap size="middle">
           <DbSelector value={dbType} onChange={handleDbChange} />
-          <Divider type="vertical" />
+          <Divider orientation="vertical" />
           <Button
             type="primary"
             icon={<PlayCircleOutlined />}
@@ -139,7 +139,7 @@ export default function SqlConsole() {
       </Card>
 
       {/* 结果区域 */}
-      <Spin spinning={loading} tip="正在执行查询...">
+      <Spin spinning={loading} description="正在执行查询...">
         <Card
           styles={{ body: { padding: 16 } }}
         >

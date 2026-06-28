@@ -150,8 +150,13 @@ class TestAlembicAutogenerate:
         except Exception as e:
             pytest.fail(f"[{db_name}] autogenerate compare_metadata 失败: {type(e).__name__}: {e}")
 
-        # 清理
+        # 清理：drop 所有表后将 alembic stamp 重置为 base，
+        # 否则后续测试的 alembic upgrade 会因为 revision 已在 head 而跳过建表
         Base.metadata.drop_all(bind=engine)
+        try:
+            command.stamp(cfg, "base")
+        except Exception:
+            pass
         engine.dispose()
 
     def test_migration_script_generation(self, db_name, tmp_path):

@@ -14,12 +14,16 @@ Architecture:
         → _compute_final_score()              [weighted sum]
 
 Key constraint: Does NOT re-execute SQL — reuses existing compare_service results.
+
+Two entry points:
+  - calculate_score(sql, db_types) — original, parses internally
+  - calculate_score_from_context(ctx) — kernel path, uses pre-built context
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from app.api.sql_demo.compare_service import (
     compute_diff,
@@ -29,6 +33,9 @@ from app.api.sql_demo.compare_service import (
 from app.api.sql_compare.score_schemas import Finding, ScoreBreakdown, ScoreResponse
 from .scoring import execution_score, result_score, risk_score, syntax_score
 from .sql_ast import parse_ast
+
+if TYPE_CHECKING:
+    from app.core.sql_kernel.semantic_context import SQLSemanticContext
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +121,121 @@ def calculate_score(
         suggestions=suggestions,
         db_count=len(db_types),
         execution_time_ms=round(elapsed_ms, 1),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Kernel entry point — uses pre-built SQLSemanticContext
+# ---------------------------------------------------------------------------
+
+
+def calculate_score_from_context(
+    ctx: "SQLSemanticContext",
+    db_types: list[str] | None = None,
+) -> ScoreResponse:
+    """Calculate compatibility score using a pre-built SQLSemanticContext.
+
+    This is the kernel path — it skips parse_ast() because the context
+    already contains the AST-level features (statement_type, has_top,
+    dialect_functions, etc.).
+
+    NOTE: This still requires live database connections for execution-based
+    scoring dimensions (execution_score, result_score).
+
+    Args:
+        ctx: Pre-built SQLSemanticContext from the kernel.
+        db_types: Target database types.  Defaults to [source_db, target_db].
+
+    Returns:
+        ScoreResponse with overall score, level, breakdown, findings, suggestions.
+    """
+    if db_types is None:
+        db_types = [ctx.source_db, ctx.target_db]
+
+    start_time = time.perf_counter()
+
+    # -- Step 1: Execute on all target DBs (requires live connections) --
+    results, rewrites = execute_compare(ctx.original_sql, db_types)
+
+    # -- Step 2: Compute diff --
+    diff = compute_diff(results)
+
+    # -- Step 3: Use context's pre-parsed AST features (skip parse_ast) --
+    # Build a lightweight AST-compatible object from context fields
+    ast = _context_to_ast(ctx)
+
+    # -- Step 4: Run 4 scoring dimensions --
+    syntax_val, syntax_findings = syntax_score(ast, db_types)
+    execution_val, execution_findings = execution_score(results)
+    result_val, result_findings = result_score(diff, results)
+    risk_val, risk_findings = risk_score(ast, results)
+
+    # -- Step 5: Weighted final score --
+    final_score = _compute_weighted_score(
+        syntax_val, execution_val, result_val, risk_val
+    )
+
+    # -- Step 6: Determine level --
+    level = _score_to_level(final_score)
+
+    # -- Step 7: Collect all findings --
+    all_findings = (
+        syntax_findings + execution_findings + result_findings + risk_findings
+    )
+
+    # -- Step 8: Generate suggestions --
+    suggestions = _generate_suggestions(rewrites, all_findings)
+
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+    return ScoreResponse(
+        score=final_score,
+        level=level,
+        breakdown=ScoreBreakdown(
+            syntax=syntax_val,
+            execution=execution_val,
+            result=result_val,
+            risk=risk_val,
+        ),
+        findings=all_findings,
+        suggestions=suggestions,
+        db_count=len(db_types),
+        execution_time_ms=round(elapsed_ms, 1),
+    )
+
+
+def _context_to_ast(ctx: "SQLSemanticContext"):
+    """Build a lightweight AST-compatible object from context fields.
+
+    This avoids calling parse_ast() when the context already has the data.
+    Returns an object with the same attributes as SqlAst.
+    """
+    from dataclasses import dataclass
+
+    @dataclass
+    class _ContextAst:
+        statement_type: str = "UNKNOWN"
+        has_top: bool = False
+        top_value: int | None = None
+        has_fetch_first: bool = False
+        fetch_first_value: int | None = None
+        has_brackets: bool = False
+        bracket_idents: list = None
+        functions: list = None
+        tables: list = None
+        raw_sql: str = ""
+
+    return _ContextAst(
+        statement_type=ctx.statement_type,
+        has_top=ctx.has_top,
+        top_value=ctx.limit_value if ctx.has_top else None,
+        has_fetch_first=ctx.has_fetch_first,
+        fetch_first_value=ctx.limit_value if ctx.has_fetch_first else None,
+        has_brackets=ctx.has_brackets,
+        bracket_idents=list(ctx.bracket_idents),
+        functions=list(ctx.dialect_functions),
+        tables=list(ctx.tables_simple),
+        raw_sql=ctx.original_sql,
     )
 
 

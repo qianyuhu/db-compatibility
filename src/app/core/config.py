@@ -91,6 +91,7 @@ class Settings(BaseSettings):
                 "driver": "ODBC Driver 18 for SQL Server",
                 "TrustServerCertificate": "yes",
                 "Encrypt": "no",
+                "Charset": "UTF-8",
             },
         ).render_as_string(hide_password=False)
 
@@ -141,6 +142,7 @@ class Settings(BaseSettings):
                     f"UID={self.mssql_user};"
                     f"PWD={self.mssql_password};"
                     f"TrustServerCertificate=yes;Encrypt=no;"
+                    f"Charset=UTF-8;"
                 ),
             }
         elif self.active_db == "kingbasees":

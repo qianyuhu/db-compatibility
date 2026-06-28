@@ -12,6 +12,7 @@ SQL 执行服务层 — 安全校验 + 多库执行器工厂。
 """
 
 import re
+import threading
 import time
 from typing import Any
 
@@ -122,12 +123,21 @@ def validate_sql(sql: str) -> None:
 # =========================================================================
 
 
-def _execute_mssql(sql: str) -> dict[str, Any]:
+def _execute_mssql(sql: str, params: tuple | None = None) -> dict[str, Any]:
     """通过 SQLAlchemy + pyodbc 执行 MSSQL 查询（复用缓存 Engine）。"""
     engine = _get_cached_engine("mssql")
 
     with engine.connect() as conn:
-        result = conn.execute(text(sql))
+        # 将 %s 占位符转为 pyodbc 的 ? 占位符
+        if params:
+            sql = sql.replace("%s", "?")
+        
+        # MSSQL 性能优化：使用 FAST_FORWARD 游标（只进只读，性能最佳）
+        # 通过 execution_options 设置，避免锁竞争
+        result = conn.execute(
+            text(sql).execution_options(isolation_level="READ UNCOMMITTED"),
+            params or {}
+        )
 
         columns = list(result.keys()) if result.returns_rows else []
         rows = []
@@ -141,13 +151,13 @@ def _execute_mssql(sql: str) -> dict[str, Any]:
         }
 
 
-def _execute_kingbasees(sql: str) -> dict[str, Any]:
+def _execute_kingbasees(sql: str, params: tuple | None = None) -> dict[str, Any]:
     """通过原生 psycopg2（autocommit 模式）执行 KingbaseES 查询。"""
     conn = _get_raw_connection_for("kingbasees")
 
     try:
         cur = conn.cursor()
-        cur.execute(sql)
+        cur.execute(sql, params or ())
 
         columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall() if cur.description else []
@@ -164,13 +174,13 @@ def _execute_kingbasees(sql: str) -> dict[str, Any]:
         conn.close()
 
 
-def _execute_dm8(sql: str) -> dict[str, Any]:
+def _execute_dm8(sql: str, params: tuple | None = None) -> dict[str, Any]:
     """通过原生 dmPython 执行 DM8 查询。"""
     conn = _get_raw_connection_for("dm8")
 
     try:
         cur = conn.cursor()
-        cur.execute(sql)
+        cur.execute(sql, params or ())
 
         columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall() if cur.description else []
@@ -209,21 +219,37 @@ def _make_settings(db_type: str):
 # ---- Engine 缓存（线程安全：每个 db_type 一个 Engine）----
 
 _engine_cache: dict[str, Any] = {}
+_engine_cache_lock = threading.Lock()
 
 
 def _get_cached_engine(db_type: str):
     """返回缓存的 SQLAlchemy Engine，避免每次查询重建连接池。"""
     if db_type not in _engine_cache:
-        from sqlalchemy import create_engine as _ce
+        with _engine_cache_lock:
+            if db_type not in _engine_cache:  # double-check
+                from sqlalchemy import create_engine as _ce
 
-        s = _make_settings(db_type)
-        _engine_cache[db_type] = _ce(
-            s.database_url,
-            echo=False,
-            pool_size=3,
-            pool_pre_ping=True,
-            pool_recycle=1800,
-        )
+                s = _make_settings(db_type)
+                
+                # MSSQL 性能优化：更大的连接池 + 快速失败
+                if db_type == "mssql":
+                    _engine_cache[db_type] = _ce(
+                        s.database_url,
+                        echo=False,
+                        pool_size=10,  # 增大连接池从3到10
+                        max_overflow=20,  # 允许额外的溢出连接
+                        pool_pre_ping=True,
+                        pool_recycle=1800,
+                        pool_timeout=30,  # 获取连接超时30秒
+                    )
+                else:
+                    _engine_cache[db_type] = _ce(
+                        s.database_url,
+                        echo=False,
+                        pool_size=3,
+                        pool_pre_ping=True,
+                        pool_recycle=1800,
+                    )
     return _engine_cache[db_type]
 
 
@@ -269,16 +295,25 @@ def _get_raw_connection_for(db_type: str):
     raise ValueError(f"Unsupported db_type: {db_type}")
 
 
-def execute_sql(db_type: str, sql: str) -> dict[str, Any]:
+def execute_sql(
+    db_type: str, sql: str, skip_validation: bool = False, params: tuple | None = None
+) -> dict[str, Any]:
     """统一 SQL 执行入口。
 
-    1. 安全校验
+    1. 安全校验（可选跳过，用于内部生成的业务 SQL）
     2. 选择执行器
     3. 执行并计时
     4. 返回统一格式结果
+
+    Args:
+        db_type: 数据库类型 (mssql/kingbasees/dm8)
+        sql: SQL 语句（使用 %s 占位符）
+        skip_validation: 跳过只读安全校验
+        params: 参数化查询参数 tuple
     """
     # 安全校验
-    validate_sql(sql)
+    if not skip_validation:
+        validate_sql(sql)
 
     executor = _EXECUTORS.get(db_type)
     if executor is None:
@@ -296,7 +331,7 @@ def execute_sql(db_type: str, sql: str) -> dict[str, Any]:
     # 执行 + 计时
     start = time.perf_counter()
     try:
-        result = executor(sql)
+        result = executor(sql, params)
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         return {

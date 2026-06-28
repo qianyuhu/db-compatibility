@@ -19,7 +19,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "sr
 
 from app.core.config import settings  # noqa: E402
 from app.models.base import Base  # noqa: E402
-from app.models.product import Product  # noqa: F401 — 确保模型被导入
+from app.models.customer import Customer  # noqa: F401
+from app.models.inventory import Inventory  # noqa: F401
+from app.models.order import Order, OrderItem  # noqa: F401
+from app.models.product import Product  # noqa: F401
 
 # Alembic Config 对象
 config = context.config
