@@ -154,7 +154,7 @@ class Settings(BaseSettings):
                 "user": self.kingbasees_user,
                 "password": self.kingbasees_password,
                 "options": "-c client_encoding=utf8",
-                "connect_timeout": 10,
+                "connect_timeout": 3,  # 3秒快速失败
             }
         elif self.active_db == "dm8":
             return {

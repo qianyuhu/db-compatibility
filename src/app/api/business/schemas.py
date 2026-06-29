@@ -213,3 +213,64 @@ class MigrationPipelineResponse(BaseModel):
     overall_status: str = "pending"
     total_time_ms: float = 0.0
     warnings: list[str] = Field(default_factory=list)
+
+
+# =========================================================================
+# Verification
+# =========================================================================
+
+
+class VerificationRequest(BaseModel):
+    """数据库验证请求。"""
+
+    source_db: str = Field(default="mssql", pattern=r"^(mssql|kingbasees|dm8)$")
+    target_db: str = Field(default="kingbasees", pattern=r"^(mssql|kingbasees|dm8)$")
+    tables: Optional[list[str]] = Field(
+        default=None,
+        description="要验证的表列表。默认全部: customers, products, orders, order_items, inventory",
+    )
+
+
+class TableVerificationResult(BaseModel):
+    """单表验证结果。"""
+
+    table_name: str
+    source_count: Optional[int] = None
+    target_count: Optional[int] = None
+    source_error: Optional[str] = None
+    target_error: Optional[str] = None
+    status: str = "ERROR"  # PASS | FAIL | ERROR
+    source_time_ms: float = 0.0
+    target_time_ms: float = 0.0
+
+
+class VerificationResponse(BaseModel):
+    """数据库验证响应。"""
+
+    source_db: str
+    target_db: str
+    tables: list[TableVerificationResult] = Field(default_factory=list)
+    all_match: bool = False
+    match_count: int = 0
+    total_tables: int = 0
+    verified: bool = False
+    total_time_ms: float = 0.0
+
+
+class SqlValidationRequest(BaseModel):
+    """SQL 验证请求 — 在双库上执行同一 SQL 并对比结果。"""
+
+    sql: str = Field(..., description="要验证的 SQL 语句")
+    source_db: str = Field(default="mssql", pattern=r"^(mssql|kingbasees|dm8)$")
+    target_db: str = Field(default="kingbasees", pattern=r"^(mssql|kingbasees|dm8)$")
+
+
+class SqlValidationResult(BaseModel):
+    """SQL 验证结果。"""
+
+    sql: str
+    source_result: SingleResult
+    target_result: SingleResult
+    equal: bool
+    diff_detail: list[dict[str, Any]] = Field(default_factory=list)
+    execution_time_ms: float = 0.0

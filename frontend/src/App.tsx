@@ -71,7 +71,7 @@ export default function App() {
                 label: (
                   <span>
                     <CodeOutlined />
-                    SQL Console
+                    Console
                   </span>
                 ),
               },
@@ -80,7 +80,7 @@ export default function App() {
                 label: (
                   <span>
                     <SwapOutlined />
-                    SQL Compare
+                    Compare
                   </span>
                 ),
               },
@@ -89,7 +89,7 @@ export default function App() {
                 label: (
                   <span>
                     <ExperimentOutlined />
-                    SQL Score
+                    Score
                   </span>
                 ),
               },
@@ -98,7 +98,7 @@ export default function App() {
                 label: (
                   <span>
                     <ThunderboltOutlined />
-                    SQL Rewrite
+                    Rewrite
                   </span>
                 ),
               },
@@ -107,7 +107,7 @@ export default function App() {
                 label: (
                   <span>
                     <BugOutlined />
-                    SQL Diagnostics
+                    Diagnostics
                   </span>
                 ),
               },
@@ -116,7 +116,7 @@ export default function App() {
                 label: (
                   <span>
                     <RocketOutlined />
-                    Migration Plan
+                    Migration
                   </span>
                 ),
               },
@@ -139,6 +139,24 @@ export default function App() {
                 ),
               },
               {
+                key: "products",
+                label: (
+                  <span>
+                    <AppstoreOutlined />
+                    Products
+                  </span>
+                ),
+              },
+              {
+                key: "customers",
+                label: (
+                  <span>
+                    <TeamOutlined />
+                    Customers
+                  </span>
+                ),
+              },
+              {
                 key: "orders",
                 label: (
                   <span>
@@ -157,29 +175,11 @@ export default function App() {
                 ),
               },
               {
-                key: "erp-migration",
+                key: "reports",
                 label: (
                   <span>
-                    <DeploymentUnitOutlined />
-                    ERP Migration
-                  </span>
-                ),
-              },
-              {
-                key: "customers",
-                label: (
-                  <span>
-                    <TeamOutlined />
-                    Customers
-                  </span>
-                ),
-              },
-              {
-                key: "products",
-                label: (
-                  <span>
-                    <AppstoreOutlined />
-                    Products
+                    <BarChartOutlined />
+                    Reports
                   </span>
                 ),
               },
@@ -188,16 +188,16 @@ export default function App() {
                 label: (
                   <span>
                     <DashboardOutlined />
-                    SQL Coverage
+                    Coverage
                   </span>
                 ),
               },
               {
-                key: "reports",
+                key: "erp-migration",
                 label: (
                   <span>
-                    <BarChartOutlined />
-                    Reports
+                    <DeploymentUnitOutlined />
+                    ERP Migration
                   </span>
                 ),
               },

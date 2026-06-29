@@ -8,12 +8,17 @@ MigrationService — ERP 迁移流水线服务。
     Phase 4: Compatibility Report — 汇总所有发现
 
 FK 依赖顺序: customers → products → orders → order_items → inventory
+
+Verification:
+    verify_table_counts()  — 并行验证所有业务表双库行数
+    validate_sql()          — 在双库上执行 SQL 并对比结果
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from app.api.sql_demo.service import execute_sql
@@ -29,6 +34,15 @@ logger = logging.getLogger(__name__)
 
 # 表迁移顺序（按 FK 依赖排序）
 _TABLE_ORDER = ["customers", "products", "orders", "order_items", "inventory"]
+
+# 允许验证的表白名单 — 唯一来源，杜绝 SQL 注入
+_ALLOWED_TABLES: set[str] = set(_TABLE_ORDER)
+
+# SQL 模板映射 — 仅使用预定义模板，绝不拼接用户输入
+_SQL_MAP: dict[str, str] = {
+    table: f"SELECT COUNT(*) AS cnt FROM {table}"
+    for table in _TABLE_ORDER
+}
 
 # 模型映射
 _MODEL_MAP: dict[str, Any] = {
@@ -187,7 +201,14 @@ class MigrationService:
         if pk_cols:
             cols.append(f"    PRIMARY KEY ({', '.join(pk_cols)})")
 
-        return f"CREATE TABLE {table_name} (\n" + ",\n".join(cols) + "\n)"
+        ddl = f"CREATE TABLE {table_name} (\n" + ",\n".join(cols) + "\n)"
+        
+        # KingbaseES MSSQL 兼容模式修复:
+        # TIMESTAMP 在 SQL Server 中是 rowversion 类型，不支持 DEFAULT
+        # 需要替换为 DATETIME2
+        ddl = ddl.replace("TIMESTAMP", "DATETIME2")
+        
+        return ddl
 
     # ------------------------------------------------------------------
     # Phase 2: Data Migration
@@ -349,6 +370,191 @@ class MigrationService:
             "score": round(match_count / len(_TABLE_ORDER) * 100),
         }
 
+    # ------------------------------------------------------------------
+    # Verification — 数据一致性验证
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_allowed_tables() -> list[str]:
+        """返回允许验证的表列表（按 FK 依赖顺序）。前端应从此端点获取。"""
+        return list(_TABLE_ORDER)
+
+    def verify_table_counts(
+        self, tables: list[str] | None = None
+    ) -> dict[str, Any]:
+        """并行验证每个业务表的双库行数是否一致。
+
+        使用 ThreadPoolExecutor 并行执行，避免串行 10-15s 延迟。
+
+        Args:
+            tables: 要验证的表列表，默认全部。仅接受 _ALLOWED_TABLES 中的值。
+
+        Returns:
+            {
+                "tables": [...],
+                "all_match": bool,
+                "match_count": int,
+                "total_tables": int,
+                "verified": bool,
+                "total_time_ms": float,
+            }
+        """
+        total_start = time.perf_counter()
+
+        # 验证并过滤表名（白名单检查 — 杜绝 SQL 注入）
+        if tables is None:
+            tables = list(_TABLE_ORDER)
+        else:
+            invalid = [t for t in tables if t not in _ALLOWED_TABLES]
+            if invalid:
+                raise ValueError(
+                    f"Invalid table(s): {', '.join(invalid)}. "
+                    f"Allowed: {', '.join(sorted(_ALLOWED_TABLES))}"
+                )
+
+        results: list[dict[str, Any]] = []
+
+        # 并行验证所有表
+        with ThreadPoolExecutor(max_workers=min(len(tables), 5)) as executor:
+            future_map = {
+                executor.submit(
+                    self._verify_single_table, table_name
+                ): table_name
+                for table_name in tables
+            }
+            for future in as_completed(future_map):
+                table_name = future_map[future]
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    result = {
+                        "table_name": table_name,
+                        "status": "ERROR",
+                        "source_error": str(exc),
+                        "target_error": str(exc),
+                    }
+                results.append(result)
+
+        # 按 _TABLE_ORDER 排序
+        results.sort(key=lambda r: _TABLE_ORDER.index(r["table_name"]))
+
+        match_count = sum(1 for r in results if r.get("status") == "PASS")
+        all_match = match_count == len(results)
+        total_ms = round((time.perf_counter() - total_start) * 1000, 1)
+
+        return {
+            "tables": results,
+            "all_match": all_match,
+            "match_count": match_count,
+            "total_tables": len(results),
+            "verified": all_match,
+            "total_time_ms": total_ms,
+        }
+
+    def _verify_single_table(self, table_name: str) -> dict[str, Any]:
+        """验证单张表的双库行数。"""
+        sql = _SQL_MAP[table_name]  # 使用预定义模板，绝不拼接
+
+        try:
+            exec_result = SQLKernel.execute_on_both(
+                sql=sql,
+                source_db=self.source_db,
+                target_db=self.target_db,
+                skip_validation=True,
+                analyze_kernel=False,
+            )
+
+            source_count = _extract_count(exec_result.source_result)
+            target_count = _extract_count(exec_result.target_result)
+            source_error = _extract_error(exec_result.source_result)
+            target_error = _extract_error(exec_result.target_result)
+            source_time = _extract_time(exec_result.source_result)
+            target_time = _extract_time(exec_result.target_result)
+
+            # 判定状态
+            if source_error and target_error:
+                status = "ERROR"
+            elif source_error or target_error:
+                status = "ERROR"
+            elif source_count == target_count:
+                status = "PASS"
+            else:
+                status = "FAIL"
+
+            return {
+                "table_name": table_name,
+                "source_count": source_count,
+                "target_count": target_count,
+                "source_error": source_error,
+                "target_error": target_error,
+                "status": status,
+                "source_time_ms": source_time,
+                "target_time_ms": target_time,
+            }
+        except Exception as exc:
+            return {
+                "table_name": table_name,
+                "status": "ERROR",
+                "source_error": str(exc),
+                "target_error": str(exc),
+            }
+
+    def validate_sql(self, sql: str) -> dict[str, Any]:
+        """在双库上执行 SQL 并对比结果。
+
+        Args:
+            sql: 要验证的 SQL 语句。
+
+        Returns:
+            {
+                "sql": str,
+                "source_result": dict,
+                "target_result": dict,
+                "equal": bool,
+                "diff_detail": list[dict],
+                "execution_time_ms": float,
+            }
+        """
+        exec_result = SQLKernel.execute_on_both(
+            sql=sql,
+            source_db=self.source_db,
+            target_db=self.target_db,
+            skip_validation=True,
+            analyze_kernel=False,
+        )
+
+        def _to_result_dict(raw: dict[str, Any] | None) -> dict[str, Any]:
+            if raw is None:
+                return {
+                    "success": False,
+                    "columns": [],
+                    "rows": [],
+                    "row_count": 0,
+                    "db_type": "",
+                    "execution_time_ms": 0,
+                    "error": "No result",
+                    "suggestion": None,
+                }
+            return {
+                "success": raw.get("success", False),
+                "columns": raw.get("columns", []),
+                "rows": raw.get("rows", []),
+                "row_count": raw.get("row_count", 0),
+                "db_type": raw.get("db_type", ""),
+                "execution_time_ms": raw.get("execution_time_ms", 0),
+                "error": raw.get("error"),
+                "suggestion": raw.get("suggestion"),
+            }
+
+        return {
+            "sql": sql,
+            "source_result": _to_result_dict(exec_result.source_result),
+            "target_result": _to_result_dict(exec_result.target_result),
+            "equal": exec_result.equal,
+            "diff_detail": exec_result.diff,
+            "execution_time_ms": exec_result.execution_time_ms,
+        }
+
 
 # ------------------------------------------------------------------
 # Helpers
@@ -419,6 +625,8 @@ def _build_insert_sql(
     Returns:
         (sql, params) — sql 使用 %s 占位符，params 为非 NULL 值元组
     """
+    from datetime import datetime
+
     non_null_cols: list[str] = []
     params: list[Any] = []
     placeholders: list[str] = []
@@ -426,6 +634,12 @@ def _build_insert_sql(
     for col_name, val in zip(columns, row):
         if val is None:
             continue  # 跳过 NULL 列
+        
+        # KingbaseES MSSQL 兼容模式修复:
+        # datetime 对象需要转为字符串，避免被识别为 rowversion
+        if isinstance(val, datetime):
+            val = val.strftime('%Y-%m-%d %H:%M:%S')
+        
         non_null_cols.append(col_name)
         params.append(val)
         placeholders.append("%s")
@@ -434,3 +648,29 @@ def _build_insert_sql(
     placeholders_str = ", ".join(placeholders)
     sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders_str})"
     return sql, tuple(params)
+
+
+def _extract_count(result: dict[str, Any] | None) -> int | None:
+    """从执行结果中提取 COUNT 值。"""
+    if result is None or not result.get("success"):
+        return None
+    rows = result.get("rows", [])
+    if rows and rows[0]:
+        return int(rows[0][0]) if isinstance(rows[0], list) else int(rows[0])
+    return None
+
+
+def _extract_error(result: dict[str, Any] | None) -> str | None:
+    """从执行结果中提取错误信息。"""
+    if result is None:
+        return "No result"
+    if not result.get("success"):
+        return result.get("error", "Unknown error")
+    return None
+
+
+def _extract_time(result: dict[str, Any] | None) -> float:
+    """从执行结果中提取执行耗时。"""
+    if result is None:
+        return 0.0
+    return result.get("execution_time_ms", 0.0)

@@ -128,16 +128,14 @@ def _execute_mssql(sql: str, params: tuple | None = None) -> dict[str, Any]:
     engine = _get_cached_engine("mssql")
 
     with engine.connect() as conn:
+        # MSSQL 性能优化：设置 READ UNCOMMITTED 隔离级别，避免锁竞争
+        conn = conn.execution_options(isolation_level="READ UNCOMMITTED")
+        
         # 将 %s 占位符转为 pyodbc 的 ? 占位符
         if params:
             sql = sql.replace("%s", "?")
         
-        # MSSQL 性能优化：使用 FAST_FORWARD 游标（只进只读，性能最佳）
-        # 通过 execution_options 设置，避免锁竞争
-        result = conn.execute(
-            text(sql).execution_options(isolation_level="READ UNCOMMITTED"),
-            params or {}
-        )
+        result = conn.execute(text(sql), params or {})
 
         columns = list(result.keys()) if result.returns_rows else []
         rows = []

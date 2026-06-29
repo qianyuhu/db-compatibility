@@ -24,7 +24,10 @@ from .schemas import DualDbResult
 logger = logging.getLogger(__name__)
 
 # 单次数据库执行超时（秒）
+# MSSQL/DM8: 30秒（本地数据库）
+# KingbaseES: 3秒（远程数据库，快速失败）
 _EXECUTE_TIMEOUT = 30
+_KINGBASEES_TIMEOUT = 3
 
 
 class DualDbExecutor:
@@ -88,18 +91,30 @@ class DualDbExecutor:
             )
 
             for future in as_completed([future_source, future_target]):
+                # 根据数据库类型选择不同的超时时间
                 try:
-                    db, result, elapsed, error_msg = future.result(timeout=timeout)
+                    db_type = future_source if future == future_source else future_target
+                    # 获取future对应的数据库类型
+                    if future == future_source:
+                        db_name = source_db
+                        current_timeout = timeout
+                    else:
+                        db_name = target_db
+                        # KingbaseES使用更短的超时时间（远程服务器）
+                        current_timeout = _KINGBASEES_TIMEOUT if db_name == "kingbasees" else timeout
+                    
+                    db, result, elapsed, error_msg = future.result(timeout=current_timeout)
                 except TimeoutError:
                     # 超时的 future 对应的 DB 标记为超时
                     logger.error(
-                        "DB execution timed out after %ss", timeout
+                        "DB execution timed out after %ss for %s", 
+                        current_timeout, db_name
                     )
                     # 找到是哪个 future 超时并标记
                     if future == future_source:
-                        source_result = _timeout_result(source_db, timeout)
+                        source_result = _timeout_result(source_db, current_timeout)
                     else:
-                        target_result = _timeout_result(target_db, timeout)
+                        target_result = _timeout_result(target_db, current_timeout)
                     continue
 
                 if db == source_db:
