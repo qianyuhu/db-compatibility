@@ -31,42 +31,89 @@ class InventoryService:
     def check_stock(
         self,
         session: Session,
-        product_code: str,
+        product_code: str | None = None,
+        warehouse_id: str | None = None,
+        stock_status: str | None = None,
+        keyword: str | None = None,
     ) -> BusinessOperationResult:
-        """查询产品库存。
+        """查询产品库存 — 支持灵活可选筛选（ERP 风格）。
 
-        1. 通过 Repository 查找产品 ID
-        2. 生成参数化查询库存的 SELECT SQL
-        3. 通过 SQLKernel 在双库执行并对比
+        用例:
+            A. 无筛选 → SELECT * FROM inventory LIMIT 100
+            B. 按 product_code → WHERE product_code = ?
+            C. 混合筛选 → WHERE warehouse_id = ? AND stock_status = ?
+            D. 关键词搜索 → JOIN products WHERE name/code LIKE ?
 
         Args:
             session: 源库 SQLAlchemy Session
-            product_code: 产品编码
+            product_code: 产品编码（可选）
+            warehouse_id: 仓库 ID（可选）
+            stock_status: "low"=低于最低库存, "normal"=正常（可选）
+            keyword: 关键词搜索产品名/编码（可选）
         """
         start = time.perf_counter()
 
-        # 1. 查找产品 ID
-        from app.repositories.product import ProductRepository
+        # ---- 构建动态 SQL ----
+        has_filters = any([
+            product_code is not None,
+            warehouse_id is not None,
+            stock_status is not None,
+            keyword is not None,
+        ])
 
-        prod_repo = ProductRepository(session)
-        product = None
-        all_prods, _ = prod_repo.list(limit=1000)
-        for p in all_prods:
-            if p.code == product_code:
-                product = p
-                break
-
-        if product is None:
-            raise ValueError(f"Product not found: {product_code}")
-
-        # 2. 生成参数化查询 SQL
-        sql = (
+        base_select = (
             "SELECT i.id, i.product_id, i.warehouse, i.quantity, "
             "i.min_quantity, i.updated_at "
-            "FROM inventory i "
-            "WHERE i.product_id = %s"
+            "FROM inventory i"
         )
-        params = (product.id,)
+
+        joins: list[str] = []
+        conditions: list[str] = []
+        params_list: list[Any] = []
+
+        # 产品编码筛选
+        if product_code is not None:
+            joins.append("JOIN products p ON i.product_id = p.id")
+            conditions.append("p.code = %s")
+            params_list.append(product_code)
+
+        # 仓库筛选
+        if warehouse_id is not None:
+            conditions.append("i.warehouse = %s")
+            params_list.append(warehouse_id)
+
+        # 库存状态筛选
+        if stock_status == "low":
+            conditions.append("i.quantity < i.min_quantity")
+        elif stock_status == "normal":
+            conditions.append("i.quantity >= i.min_quantity")
+        # "all" or None → no status filter
+
+        # 关键词搜索（产品名或编码）
+        if keyword is not None:
+            if "p" not in [j for j in joins if "products p" in j]:
+                joins.append("JOIN products p ON i.product_id = p.id")
+            conditions.append("(p.name LIKE %s OR p.code LIKE %s)")
+            kw_pattern = f"%{keyword}%"
+            params_list.append(kw_pattern)
+            params_list.append(kw_pattern)
+
+        # 组装 SQL
+        sql_parts = [base_select]
+        sql_parts.extend(joins)
+
+        if conditions:
+            sql_parts.append("WHERE " + " AND ".join(conditions))
+
+        if not has_filters:
+            if self.source_db == "mssql":
+                # MSSQL 不支持 LIMIT，使用 SELECT TOP N
+                sql_parts[0] = sql_parts[0].replace("SELECT", "SELECT TOP 100", 1)
+            else:
+                sql_parts.append("LIMIT 100")
+
+        sql = " ".join(sql_parts)
+        params = tuple(params_list) if params_list else None
 
         # 3. 通过 SQLKernel 在双库执行
         exec_result = SQLKernel.execute_on_both(

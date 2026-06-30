@@ -25,6 +25,9 @@ from app.api.business.migration_router import router as business_migration_route
 from app.api.business.customer_router import router as business_customer_router
 from app.api.business.product_router import router as business_product_router
 from app.api.business.report_router import router as business_report_router
+from app.api.business.sandbox_router import router as sandbox_router
+from app.api.sql_compat.compat_router import router as sql_compat_router
+from app.api.showcase_router import router as showcase_router
 
 app = FastAPI(
     title="SQL Demo — Multi-Database Execution Platform",
@@ -69,6 +72,9 @@ app.include_router(business_migration_router)
 app.include_router(business_customer_router)
 app.include_router(business_product_router)
 app.include_router(business_report_router)
+app.include_router(sandbox_router)
+app.include_router(sql_compat_router)
+app.include_router(showcase_router)
 
 
 @app.get("/api/health", tags=["health"])

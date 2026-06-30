@@ -15,7 +15,7 @@ import {
   Spin,
   Space,
   message,
-  Descriptions,
+  Radio,
 } from "antd";
 import {
   BarcodeOutlined,
@@ -23,6 +23,11 @@ import {
   CloseCircleOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
+  SearchOutlined,
+  ThunderboltOutlined,
+  InboxOutlined,
+  ShopOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import GeneratedSqlPanel from "../components/GeneratedSqlPanel";
 import SideBySideResult from "../components/SideBySideResult";
@@ -32,6 +37,67 @@ import {
   type BusinessOperationResponse,
 } from "../api/business";
 
+// =========================================================================
+// Quick Query Modes
+// =========================================================================
+
+type QuickMode = "all" | "by_product" | "by_warehouse" | "low_stock" | "custom";
+
+interface QuickModeOption {
+  key: QuickMode;
+  label: string;
+  icon: React.ReactNode;
+  description: string;
+  presetFilters: Partial<{
+    product_code: string | null;
+    warehouse_id: string | null;
+    stock_status: "low" | "normal" | "all" | null;
+    keyword: string | null;
+  }>;
+}
+
+const QUICK_MODES: QuickModeOption[] = [
+  {
+    key: "all",
+    label: "All Inventory",
+    icon: <InboxOutlined />,
+    description: "查询全部库存（限100条）",
+    presetFilters: {},
+  },
+  {
+    key: "by_product",
+    label: "By Product",
+    icon: <BarcodeOutlined />,
+    description: "按产品编码精确查询",
+    presetFilters: { product_code: null },
+  },
+  {
+    key: "by_warehouse",
+    label: "By Warehouse",
+    icon: <ShopOutlined />,
+    description: "按仓库筛选库存",
+    presetFilters: { warehouse_id: null },
+  },
+  {
+    key: "low_stock",
+    label: "Low Stock",
+    icon: <WarningOutlined />,
+    description: "低于最低库存预警",
+    presetFilters: { stock_status: "low" },
+  },
+  {
+    key: "custom",
+    label: "Custom Filter",
+    icon: <SearchOutlined />,
+    description: "自由组合筛选条件",
+    presetFilters: {},
+  },
+];
+
+// =========================================================================
+// Component
+// =========================================================================
+
 export default function InventoryQuery() {
   const [queryForm] = Form.useForm();
   const [adjustForm] = Form.useForm();
@@ -40,13 +106,36 @@ export default function InventoryQuery() {
   const [adjustResult, setAdjustResult] = useState<BusinessOperationResponse | null>(null);
   const [sourceDb, setSourceDb] = useState("mssql");
   const [targetDb, setTargetDb] = useState("kingbasees");
+  const [quickMode, setQuickMode] = useState<QuickMode>("all");
 
-  const handleQuery = async (values: { product_code: string }) => {
+  // ---- Apply quick mode preset ----
+  const handleQuickMode = (mode: QuickMode) => {
+    setQuickMode(mode);
+    setQueryResult(null);
+    const preset = QUICK_MODES.find((m) => m.key === mode)?.presetFilters ?? {};
+
+    queryForm.resetFields();
+    if (Object.keys(preset).length > 0) {
+      queryForm.setFieldsValue(preset);
+    }
+
+    // Auto-execute non-custom modes
+    if (mode !== "custom") {
+      const values = { ...preset };
+      executeQuery(values);
+    }
+  };
+
+  // ---- Execute query ----
+  const executeQuery = async (values: Record<string, unknown>) => {
     setLoading(true);
     setQueryResult(null);
     try {
       const res = await queryStock({
-        product_code: values.product_code,
+        product_code: (values.product_code as string) || null,
+        warehouse_id: (values.warehouse_id as string) || null,
+        stock_status: (values.stock_status as "low" | "normal" | "all") || null,
+        keyword: (values.keyword as string) || null,
         source_db: sourceDb,
         target_db: targetDb,
       });
@@ -60,6 +149,12 @@ export default function InventoryQuery() {
     }
   };
 
+  const handleQuery = async (values: Record<string, unknown>) => {
+    setQuickMode("custom");
+    await executeQuery(values);
+  };
+
+  // ---- Stock adjustment ----
   const handleAdjust = async (values: { product_code: string; delta: number; reason?: string }) => {
     setLoading(true);
     setAdjustResult(null);
@@ -85,13 +180,17 @@ export default function InventoryQuery() {
     }
   };
 
+  // =========================================================================
+  // Render
+  // =========================================================================
+
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
       <Typography.Title level={4}>
         <BarcodeOutlined /> Inventory Query
       </Typography.Title>
       <Typography.Paragraph type="secondary">
-        查询和调整产品库存，实时对比双库数据
+        灵活的 ERP 风格库存查询 — 支持可选筛选条件、快捷查询模式和双库对比
       </Typography.Paragraph>
 
       {/* SQL Coverage Indicators */}
@@ -119,26 +218,99 @@ export default function InventoryQuery() {
         </Select>
       </Space>
 
-      {/* Stock Query */}
+      {/* ================================================================ */}
+      {/* Quick Query Modes */}
+      {/* ================================================================ */}
+      <Card
+        title={
+          <Space>
+            <ThunderboltOutlined />
+            <span>Quick Query Modes</span>
+          </Space>
+        }
+        size="small"
+        style={{ marginBottom: 16 }}
+      >
+        <Radio.Group
+          value={quickMode}
+          onChange={(e) => handleQuickMode(e.target.value)}
+          buttonStyle="solid"
+          size="middle"
+        >
+          {QUICK_MODES.map((mode) => (
+            <Radio.Button key={mode.key} value={mode.key}>
+              <Space>
+                {mode.icon}
+                {mode.label}
+              </Space>
+            </Radio.Button>
+          ))}
+        </Radio.Group>
+        <Typography.Paragraph
+          type="secondary"
+          style={{ marginTop: 8, marginBottom: 0 }}
+        >
+          {QUICK_MODES.find((m) => m.key === quickMode)?.description}
+        </Typography.Paragraph>
+      </Card>
+
+      {/* ================================================================ */}
+      {/* Stock Query with Optional Filters */}
+      {/* ================================================================ */}
       <Card title="库存查询" style={{ marginBottom: 24 }}>
         <Form
           form={queryForm}
-          layout="inline"
+          layout="vertical"
           onFinish={handleQuery}
         >
-          <Form.Item
-            label="产品编码"
-            name="product_code"
-            rules={[{ required: true, message: "请输入产品编码" }]}
-          >
-            <Input placeholder="例如: P001" style={{ width: 200 }} />
-          </Form.Item>
-          <Form.Item>
+          <Row gutter={16}>
+            <Col span={6}>
+              <Form.Item
+                label="产品编码"
+                name="product_code"
+              >
+                <Input placeholder="可选，例如: P001" allowClear />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                label="仓库"
+                name="warehouse_id"
+              >
+                <Input placeholder="可选，例如: MAIN" allowClear />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                label="库存状态"
+                name="stock_status"
+              >
+                <Select
+                  placeholder="全部"
+                  allowClear
+                  style={{ width: "100%" }}
+                >
+                  <Select.Option value="all">全部</Select.Option>
+                  <Select.Option value="normal">正常库存</Select.Option>
+                  <Select.Option value="low">低库存预警</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                label="关键词搜索"
+                name="keyword"
+              >
+                <Input placeholder="产品名/编码模糊搜索" allowClear />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item style={{ marginBottom: 0 }}>
             <Button
               type="primary"
               htmlType="submit"
               loading={loading}
-              icon={<BarcodeOutlined />}
+              icon={<SearchOutlined />}
             >
               查询库存
             </Button>
@@ -208,7 +380,7 @@ export default function InventoryQuery() {
         >
           <Row gutter={16}>
             <Col span={12}>
-              <Card size="small" title="MSSQL 结果" bordered>
+              <Card size="small" title={`${sourceDb.toUpperCase()} 结果`} bordered>
                 <Typography.Text>
                   行数: <strong>{queryResult.source_result.row_count}</strong>
                 </Typography.Text>
@@ -219,7 +391,7 @@ export default function InventoryQuery() {
               </Card>
             </Col>
             <Col span={12}>
-              <Card size="small" title="KingbaseES 结果" bordered>
+              <Card size="small" title={`${targetDb.toUpperCase()} 结果`} bordered>
                 <Typography.Text>
                   行数: <strong>{queryResult.target_result.row_count}</strong>
                 </Typography.Text>
@@ -244,11 +416,11 @@ export default function InventoryQuery() {
                     <span>
                       <strong>{diff.field}:</strong>{" "}
                       <span style={{ color: "#1677ff" }}>
-                        MSSQL={JSON.stringify(diff.source)}
+                        {sourceDb.toUpperCase()}={JSON.stringify(diff.source)}
                       </span>
                       {" ≠ "}
                       <span style={{ color: "#52c41a" }}>
-                        KingbaseES={JSON.stringify(diff.target)}
+                        {targetDb.toUpperCase()}={JSON.stringify(diff.target)}
                       </span>
                     </span>
                   }
@@ -262,7 +434,7 @@ export default function InventoryQuery() {
           {queryResult.equal && (
             <Alert
               type="success"
-              message="数据完全一致 — MSSQL 和 KingbaseES 返回相同结果"
+              message={`数据完全一致 — ${sourceDb.toUpperCase()} 和 ${targetDb.toUpperCase()} 返回相同结果`}
               style={{ marginTop: 12 }}
               showIcon={false}
             />

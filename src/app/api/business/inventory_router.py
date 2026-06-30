@@ -42,7 +42,7 @@ def query_stock(
     session: Optional[Session] = Depends(get_session),
 ) -> BusinessOperationResponse:
     session = _require_session(session)
-    """查询产品库存，双库对比。"""
+    """查询产品库存 — 支持灵活可选筛选，双库对比。"""
     svc = InventoryService(
         source_db=request.source_db,
         target_db=request.target_db,
@@ -51,6 +51,9 @@ def query_stock(
     result = svc.check_stock(
         session=session,
         product_code=request.product_code,
+        warehouse_id=request.warehouse_id,
+        stock_status=request.stock_status,
+        keyword=request.keyword,
     )
 
     src = SingleResult(**result.source_result) if result.source_result else SingleResult()

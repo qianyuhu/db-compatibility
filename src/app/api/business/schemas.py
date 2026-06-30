@@ -44,9 +44,16 @@ class OrderListRequest(BaseModel):
 
 
 class StockQueryRequest(BaseModel):
-    """库存查询请求。"""
+    """库存查询请求 — 支持灵活的可选筛选条件（ERP 风格）。"""
 
-    product_code: str = Field(..., description="产品编码")
+    product_code: Optional[str] = Field(default=None, description="产品编码（可选）")
+    warehouse_id: Optional[str] = Field(default=None, description="仓库 ID（可选）")
+    stock_status: Optional[str] = Field(
+        default=None,
+        pattern=r"^(low|normal|all)?$",
+        description="库存状态: low=低于最低库存, normal=正常, all=全部",
+    )
+    keyword: Optional[str] = Field(default=None, description="关键词搜索（产品名/编码）")
     source_db: str = Field(default="mssql", pattern=r"^(mssql|kingbasees|dm8)$")
     target_db: str = Field(default="kingbasees", pattern=r"^(mssql|kingbasees|dm8)$")
 
@@ -266,11 +273,15 @@ class SqlValidationRequest(BaseModel):
 
 
 class SqlValidationResult(BaseModel):
-    """SQL 验证结果。"""
+    """SQL 验证结果 — 含 3 层增强差异分析。"""
 
     sql: str
     source_result: SingleResult
     target_result: SingleResult
     equal: bool
     diff_detail: list[dict[str, Any]] = Field(default_factory=list)
+    enhanced_diff: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="3 层增强差异分析结果 (layer1/layer2/layer3/explanations)",
+    )
     execution_time_ms: float = 0.0

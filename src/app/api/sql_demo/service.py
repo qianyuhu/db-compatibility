@@ -11,6 +11,8 @@ SQL 执行服务层 — 安全校验 + 多库执行器工厂。
     - KingbaseES 必须走原生 psycopg2（autocommit 模式）
 """
 
+from __future__ import annotations
+
 import re
 import threading
 import time
@@ -155,7 +157,13 @@ def _execute_kingbasees(sql: str, params: tuple | None = None) -> dict[str, Any]
 
     try:
         cur = conn.cursor()
-        cur.execute(sql, params or ())
+        # Only pass params when non-empty — psycopg2 interprets '%' as
+        # format specifiers even when params is an empty tuple, which
+        # breaks LIKE patterns containing '%'.
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
 
         columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall() if cur.description else []
@@ -178,7 +186,10 @@ def _execute_dm8(sql: str, params: tuple | None = None) -> dict[str, Any]:
 
     try:
         cur = conn.cursor()
-        cur.execute(sql, params or ())
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
 
         columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall() if cur.description else []

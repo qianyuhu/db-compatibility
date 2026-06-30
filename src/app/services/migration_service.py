@@ -500,7 +500,7 @@ class MigrationService:
             }
 
     def validate_sql(self, sql: str) -> dict[str, Any]:
-        """在双库上执行 SQL 并对比结果。
+        """在双库上执行 SQL 并对比结果 — 含 3 层增强差异分析。
 
         Args:
             sql: 要验证的 SQL 语句。
@@ -512,6 +512,7 @@ class MigrationService:
                 "target_result": dict,
                 "equal": bool,
                 "diff_detail": list[dict],
+                "enhanced_diff": dict | None,  # 3-layer diff
                 "execution_time_ms": float,
             }
         """
@@ -520,7 +521,7 @@ class MigrationService:
             source_db=self.source_db,
             target_db=self.target_db,
             skip_validation=True,
-            analyze_kernel=False,
+            analyze_kernel=True,  # Enable kernel for rewrite context
         )
 
         def _to_result_dict(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -546,12 +547,36 @@ class MigrationService:
                 "suggestion": raw.get("suggestion"),
             }
 
+        src_result = _to_result_dict(exec_result.source_result)
+        tgt_result = _to_result_dict(exec_result.target_result)
+
+        # Compute 3-layer enhanced diff
+        enhanced_diff: dict[str, Any] | None = None
+        if not exec_result.equal:
+            try:
+                from app.api.sql_demo.explanation_engine import compute_enhanced_diff
+
+                results_map = {
+                    self.source_db: src_result,
+                    self.target_db: tgt_result,
+                }
+                rewritten_sql = exec_result.rewritten_sql or ""
+                enhanced = compute_enhanced_diff(
+                    results=results_map,
+                    original_sql=sql,
+                    rewritten_sql=rewritten_sql,
+                )
+                enhanced_diff = enhanced.get("three_layer_diff")
+            except Exception:
+                enhanced_diff = None
+
         return {
             "sql": sql,
-            "source_result": _to_result_dict(exec_result.source_result),
-            "target_result": _to_result_dict(exec_result.target_result),
+            "source_result": src_result,
+            "target_result": tgt_result,
             "equal": exec_result.equal,
             "diff_detail": exec_result.diff,
+            "enhanced_diff": enhanced_diff,
             "execution_time_ms": exec_result.execution_time_ms,
         }
 

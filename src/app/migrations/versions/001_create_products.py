@@ -21,7 +21,7 @@ def upgrade() -> None:
         "products",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("code", sa.String(50), nullable=False),
-        sa.Column("name", sa.String(200), nullable=False),
+        sa.Column("name", sa.Unicode(200), nullable=False),
         sa.Column("price", sa.Numeric(10, 2), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False,
                   server_default=sa.text("1")),  # MSSQL BIT 用 1/0

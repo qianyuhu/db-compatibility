@@ -15,6 +15,7 @@ import {
   TeamOutlined,
   AppstoreOutlined,
   BarChartOutlined,
+  EyeOutlined,
 } from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
 import SqlConsole from "./pages/SqlConsole";
@@ -32,8 +33,9 @@ import CustomerManagement from "./pages/CustomerManagement";
 import ProductManagement from "./pages/ProductManagement";
 import SQLCoverageDashboard from "./pages/SQLCoverageDashboard";
 import ReportQueryPage from "./pages/ReportQueryPage";
+import Showcase from "./pages/Showcase";
 
-type TabKey = "console" | "compare" | "score" | "rewrite" | "diagnostics" | "migration" | "simulation" | "kernel" | "orders" | "inventory" | "erp-migration" | "customers" | "products" | "coverage" | "reports";
+type TabKey = "console" | "compare" | "score" | "rewrite" | "diagnostics" | "migration" | "simulation" | "kernel" | "orders" | "inventory" | "erp-migration" | "customers" | "products" | "coverage" | "reports" | "showcase";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("console");
@@ -201,6 +203,15 @@ export default function App() {
                   </span>
                 ),
               },
+              {
+                key: "showcase",
+                label: (
+                  <span>
+                    <EyeOutlined />
+                    场景展示
+                  </span>
+                ),
+              },
             ]}
           />
         </div>
@@ -250,6 +261,9 @@ export default function App() {
         </div>
         <div style={{ display: activeTab === "reports" ? "block" : "none" }}>
           <ReportQueryPage />
+        </div>
+        <div style={{ display: activeTab === "showcase" ? "block" : "none" }}>
+          <Showcase />
         </div>
       </AntApp>
     </ConfigProvider>

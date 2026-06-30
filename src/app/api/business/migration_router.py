@@ -150,5 +150,6 @@ def validate_sql(
         target_result=_to_single_result(data["target_result"]),
         equal=data["equal"],
         diff_detail=data["diff_detail"],
+        enhanced_diff=data.get("enhanced_diff"),
         execution_time_ms=data["execution_time_ms"],
     )
