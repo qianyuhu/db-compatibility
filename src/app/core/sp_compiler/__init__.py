@@ -1,5 +1,6 @@
 """
 🚀 Hybrid Migration Engine — T-SQL Stored Procedure → Control Flow IR → Target Code
+   + Interactive CFG Execution Workbench
 
 Three-stage database procedural compiler:
 
@@ -10,6 +11,12 @@ Three-stage database procedural compiler:
     [2] Control Flow Extractor → IR Builder (sqlglot for SQL sub-statements only)
        ↓
     [3] Target Code Generator (PL/pgSQL / DM Procedure)
+       ↓
+    [CFG Builder] → CFG (with branch-preserving edges)
+       ↓
+    [Serializer] → UI Graph Model (React Flow compatible)
+       ↓
+    [Execution Engine] → Multi-DB node execution + diff comparison
        ↓
     [Validator] Execution Validation via existing DBAdapter + DiffEngine
 

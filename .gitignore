@@ -28,5 +28,8 @@ Thumbs.db
 #env
 .env
 
+# Node
+node_modules/
+
 # RepoWiki auto-generated knowledge base
 .qoder/

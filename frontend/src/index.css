@@ -7,3 +7,16 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* ------------------------------------------------------------------ */
+/* CFG Workbench — global keyframes (referenced by inline animation)  */
+/* ------------------------------------------------------------------ */
+
+@keyframes cfg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes cfg-edge-dash {
+  to { stroke-dashoffset: -24; }
+}

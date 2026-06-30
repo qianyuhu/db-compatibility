@@ -28,6 +28,7 @@ from app.api.business.report_router import router as business_report_router
 from app.api.business.sandbox_router import router as sandbox_router
 from app.api.sql_compat.compat_router import router as sql_compat_router
 from app.api.showcase_router import router as showcase_router
+from app.api.cfg_workbench.router import router as cfg_workbench_router
 
 app = FastAPI(
     title="SQL Demo — Multi-Database Execution Platform",
@@ -75,6 +76,7 @@ app.include_router(business_report_router)
 app.include_router(sandbox_router)
 app.include_router(sql_compat_router)
 app.include_router(showcase_router)
+app.include_router(cfg_workbench_router)
 
 
 @app.get("/api/health", tags=["health"])

@@ -80,8 +80,15 @@ class CFGOptimizer:
             b for b in cfg.blocks if b.id in reachable
         )
 
+        # Filter edges to only those connecting live blocks
+        live_edges = tuple(
+            e for e in cfg.edges
+            if e.from_block in reachable and e.to_block in reachable
+        )
+
         return CFG(
             blocks=live_blocks,
+            edges=live_edges,
             entry_block_id=cfg.entry_block_id,
             exit_block_ids=tuple(
                 eid for eid in cfg.exit_block_ids if eid in reachable

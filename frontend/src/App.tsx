@@ -16,6 +16,7 @@ import {
   AppstoreOutlined,
   BarChartOutlined,
   EyeOutlined,
+  ApartmentOutlined,
 } from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
 import SqlConsole from "./pages/SqlConsole";
@@ -34,8 +35,9 @@ import ProductManagement from "./pages/ProductManagement";
 import SQLCoverageDashboard from "./pages/SQLCoverageDashboard";
 import ReportQueryPage from "./pages/ReportQueryPage";
 import Showcase from "./pages/Showcase";
+import CfgWorkbench from "./pages/CfgWorkbench";
 
-type TabKey = "console" | "compare" | "score" | "rewrite" | "diagnostics" | "migration" | "simulation" | "kernel" | "orders" | "inventory" | "erp-migration" | "customers" | "products" | "coverage" | "reports" | "showcase";
+type TabKey = "console" | "compare" | "score" | "rewrite" | "diagnostics" | "migration" | "simulation" | "kernel" | "orders" | "inventory" | "erp-migration" | "customers" | "products" | "coverage" | "reports" | "showcase" | "cfg-workbench";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("console");
@@ -212,6 +214,15 @@ export default function App() {
                   </span>
                 ),
               },
+              {
+                key: "cfg-workbench",
+                label: (
+                  <span>
+                    <ApartmentOutlined />
+                    CFG Workbench
+                  </span>
+                ),
+              },
             ]}
           />
         </div>
@@ -264,6 +275,9 @@ export default function App() {
         </div>
         <div style={{ display: activeTab === "showcase" ? "block" : "none" }}>
           <Showcase />
+        </div>
+        <div style={{ display: activeTab === "cfg-workbench" ? "block" : "none" }}>
+          <CfgWorkbench />
         </div>
       </AntApp>
     </ConfigProvider>
