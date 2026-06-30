@@ -248,7 +248,7 @@ export default function ProductManagement() {
 
           <Alert
             type={searchResult.equal ? "success" : "warning"}
-            message={
+            title={
               searchResult.equal ? (
                 <span><CheckCircleOutlined /> 双库数据一致</span>
               ) : (
@@ -294,7 +294,7 @@ export default function ProductManagement() {
 
           <Alert
             type={createResult.equal ? "success" : "warning"}
-            message={
+            title={
               createResult.equal ? (
                 <span><CheckCircleOutlined /> 双库创建一致</span>
               ) : (

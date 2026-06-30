@@ -288,7 +288,7 @@ export default function SqlKernel() {
         {d.execution_strategy && (
           <Alert
             type={d.recommendation === "SAFE" ? "success" : d.recommendation === "REVIEW" ? "warning" : "error"}
-            message="Execution Strategy"
+            title="Execution Strategy"
             description={<pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 13 }}>{d.execution_strategy}</pre>}
             style={{ marginTop: 16 }}
           />
@@ -369,7 +369,7 @@ export default function SqlKernel() {
           <Alert
             type="warning"
             showIcon
-            message="Warnings"
+            title="Warnings"
             description={result.warnings.join("; ")}
             style={{ marginTop: 12 }}
           />

@@ -15,7 +15,7 @@
  *   - Replay execution trace
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import {
   Card,
   Button,
@@ -32,6 +32,7 @@ import {
   Empty,
   Input,
   Tooltip,
+  Badge,
 } from "antd";
 import {
   PlayCircleOutlined,
@@ -62,6 +63,7 @@ import { cfgNodeTypes } from "../components/cfg/CfgNodes";
 import CfgEdge from "../components/cfg/CfgEdge";
 import ExecutionInspector from "../components/cfg/ExecutionInspector";
 import ExecutionTimeline from "../components/cfg/ExecutionTimeline";
+import { useCfgWebSocket } from "../hooks/useCfgWebSocket";
 import {
   compileSP,
   executeNode as apiExecuteNode,
@@ -149,13 +151,28 @@ function toFlowNodes(uiNodes: UINode[]): Node[] {
   });
 }
 
+/** Build a lookup of node id → node type for handle validation. */
+function buildNodeTypeMap(uiNodes: UINode[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const n of uiNodes) {
+    map.set(n.id, n.type);
+  }
+  return map;
+}
+
+/** Node types that have "true"/"false" source handles. */
+const BRANCH_NODE_TYPES = new Set(["if", "while"]);
+
 /** Convert UIEdge list to React Flow edges. */
-function toFlowEdges(uiEdges: UIEdgeType[]): Edge[] {
+function toFlowEdges(uiEdges: UIEdgeType[], uiNodes: UINode[]): Edge[] {
+  const nodeType = buildNodeTypeMap(uiNodes);
+
   return uiEdges.map((e) => {
-    // Determine source handle based on edge type
+    // Only set named sourceHandle when the source node actually has those handles
+    const srcType = nodeType.get(e.from_id) || "";
     const sourceHandle =
-      e.edge_type === "true_branch" ? "true"
-      : e.edge_type === "false_branch" ? "false"
+      BRANCH_NODE_TYPES.has(srcType) && e.edge_type === "true_branch" ? "true"
+      : BRANCH_NODE_TYPES.has(srcType) && e.edge_type === "false_branch" ? "false"
       : undefined;
 
     return {
@@ -202,11 +219,111 @@ export default function CfgWorkbench() {
   >([]);
   const [activeTab, setActiveTab] = useState("tsql");
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
+  const [wsSessionId, setWsSessionId] = useState<string>("");
   const sessionIdRef = useRef<string>("");
 
   // React Flow state
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  // --- WebSocket callbacks ---
+  const onNodeStarted = useCallback((nodeId: string) => {
+    setFlowNodes((nds) =>
+      nds.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, status: "running" } } : n,
+      ),
+    );
+    setTimelineEntries((prev) => [
+      ...prev,
+      { nodeId, status: "running", executionTimeMs: 0 },
+    ]);
+  }, [setFlowNodes]);
+
+  const onNodeFinished = useCallback(
+    (nodeId: string, data: Record<string, unknown>) => {
+      setFlowNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, status: "success" } } : n,
+        ),
+      );
+      setTimelineEntries((prev) =>
+        prev.map((e) =>
+          e.nodeId === nodeId && e.status === "running"
+            ? { ...e, status: "success", executionTimeMs: (data.execution_time_ms as number) || 0 }
+            : e,
+        ),
+      );
+      if (data) {
+        setExecutionResults((prev) => {
+          const next = new Map(prev);
+          next.set(nodeId, {
+            node_id: nodeId,
+            status: "success",
+            results: (data.results as NodeExecutionResult["results"]) || {},
+            diff: (data.diff as NodeExecutionResult["diff"]) || null,
+            execution_time_ms: (data.execution_time_ms as number) || 0,
+          });
+          return next;
+        });
+      }
+    },
+    [setFlowNodes],
+  );
+
+  const onNodeFailed = useCallback(
+    (nodeId: string, _error: string) => {
+      setFlowNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, status: "failed" } } : n,
+        ),
+      );
+      setTimelineEntries((prev) =>
+        prev.map((e) =>
+          e.nodeId === nodeId && e.status === "running"
+            ? { ...e, status: "failed", executionTimeMs: 0 }
+            : e,
+        ),
+      );
+    },
+    [setFlowNodes],
+  );
+
+  const onNodeSkipped = useCallback(
+    (nodeId: string, _reason: string) => {
+      setFlowNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, status: "skipped" } } : n,
+        ),
+      );
+      setTimelineEntries((prev) => [
+        ...prev,
+        { nodeId, status: "skipped", executionTimeMs: 0 },
+      ]);
+    },
+    [setFlowNodes],
+  );
+
+  const onExecutionComplete = useCallback(
+    (_data?: Record<string, unknown>) => {
+      setExecuting(false);
+    },
+    [],
+  );
+
+  const onExecutionPaused = useCallback((_nodeId: string) => {
+    setExecuting(false);
+  }, []);
+
+  // WebSocket hook
+  const { connected, sendCommand } = useCfgWebSocket({
+    sessionId: wsSessionId,
+    onNodeStarted,
+    onNodeFinished,
+    onNodeFailed,
+    onNodeSkipped,
+    onExecutionComplete,
+    onExecutionPaused,
+  });
 
   // --- Compile ---
   const handleCompile = useCallback(async () => {
@@ -227,7 +344,7 @@ export default function CfgWorkbench() {
 
       // Convert to React Flow format
       const nodes = toFlowNodes(res.graph_model.nodes);
-      const edges = toFlowEdges(res.graph_model.edges);
+      const edges = toFlowEdges(res.graph_model.edges, res.graph_model.nodes);
       setFlowNodes(nodes);
       setFlowEdges(edges);
 
@@ -235,6 +352,8 @@ export default function CfgWorkbench() {
       setExecutionResults(new Map());
       setTimelineEntries([]);
       setSelectedNodeId(null);
+      setWsSessionId("");
+      sessionIdRef.current = "";
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : "Compile failed");
     } finally {
@@ -307,12 +426,25 @@ export default function CfgWorkbench() {
   const handleExecuteAll = useCallback(async () => {
     if (!graphModel) return;
     setExecuting(true);
+    setTimelineEntries([]);
 
+    // Use WebSocket streaming when connected
+    if (connected && wsSessionId) {
+      sendCommand("execute-all", {
+        graph_model: graphModel,
+        target_dbs: targetDbs,
+        breakpoints: [...breakpoints],
+      });
+      // Results stream in via WS callbacks; onExecutionComplete sets executing=false
+      return;
+    }
+
+    // Fallback: REST batch execution
     try {
       const res = await executeAllNodes(graphModel, targetDbs, [...breakpoints]);
       sessionIdRef.current = res.session_id;
+      setWsSessionId(res.session_id);
 
-      // Update all results
       const newResults = new Map(executionResults);
       const newTimeline: { nodeId: string; status: string; executionTimeMs: number }[] = [];
 
@@ -339,7 +471,7 @@ export default function CfgWorkbench() {
     } finally {
       setExecuting(false);
     }
-  }, [graphModel, targetDbs, breakpoints, executionResults]);
+  }, [graphModel, targetDbs, breakpoints, executionResults, connected, wsSessionId, sendCommand]);
 
   // --- Replay ---
   const handleReplay = useCallback(async () => {
@@ -349,16 +481,21 @@ export default function CfgWorkbench() {
       const res = await getTrace(sessionIdRef.current);
       const trace = res.trace as Record<string, unknown>;
 
-      // Reset all nodes to pending
+      // Reset ALL state for replay
       setFlowNodes((nds) =>
         nds.map((n) => ({
           ...n,
           data: { ...n.data, status: "pending" },
         })),
       );
+      setExecutionResults(new Map());
+      setTimelineEntries([]);
 
-      // Animate through events
+      // Animate through events with full state restoration
       const events = (trace.events as Array<Record<string, unknown>>) || [];
+      const newResults = new Map<string, NodeExecutionResult>();
+      const newTimeline: { nodeId: string; status: string; executionTimeMs: number }[] = [];
+
       for (let i = 0; i < events.length; i++) {
         const evt = events[i];
         const nodeId = evt.node_id as string;
@@ -370,9 +507,51 @@ export default function CfgWorkbench() {
           updateNodeStatus(nodeId, "running");
         } else if (eventType === "node_finished") {
           updateNodeStatus(nodeId, "success");
+          const data = evt.data as Record<string, unknown> | undefined;
+          if (data) {
+            newResults.set(nodeId, {
+              node_id: nodeId,
+              status: "success",
+              results: (data.results as NodeExecutionResult["results"]) || {},
+              diff: (data.diff as NodeExecutionResult["diff"]) || null,
+              execution_time_ms: (data.execution_time_ms as number) || 0,
+            });
+          }
+          // Update timeline entry
+          const existingIdx = newTimeline.findIndex(
+            (e) => e.nodeId === nodeId && e.status === "running",
+          );
+          if (existingIdx >= 0) {
+            newTimeline[existingIdx] = {
+              ...newTimeline[existingIdx],
+              status: "success",
+              executionTimeMs: (evt.data as Record<string, unknown>)?.execution_time_ms as number || 0,
+            };
+          } else {
+            newTimeline.push({
+              nodeId,
+              status: "success",
+              executionTimeMs: (evt.data as Record<string, unknown>)?.execution_time_ms as number || 0,
+            });
+          }
         } else if (eventType === "node_failed") {
           updateNodeStatus(nodeId, "failed");
+          const existingIdx = newTimeline.findIndex(
+            (e) => e.nodeId === nodeId && e.status === "running",
+          );
+          if (existingIdx >= 0) {
+            newTimeline[existingIdx] = { ...newTimeline[existingIdx], status: "failed", executionTimeMs: 0 };
+          } else {
+            newTimeline.push({ nodeId, status: "failed", executionTimeMs: 0 });
+          }
+        } else if (eventType === "node_skipped") {
+          updateNodeStatus(nodeId, "skipped");
+          newTimeline.push({ nodeId, status: "skipped", executionTimeMs: 0 });
         }
+
+        // Push incremental updates
+        setExecutionResults(new Map(newResults));
+        setTimelineEntries([...newTimeline]);
       }
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : "Replay failed");
@@ -465,7 +644,7 @@ export default function CfgWorkbench() {
           Compile
         </Button>
 
-        <Divider type="vertical" />
+        <Divider orientation="vertical" />
 
         <Button
           icon={<PlayCircleOutlined />}
@@ -497,7 +676,7 @@ export default function CfgWorkbench() {
           Reset
         </Button>
 
-        <Divider type="vertical" />
+        <Divider orientation="vertical" />
 
         <Space size={4}>
           <Text type="secondary" style={{ fontSize: 12 }}>Targets:</Text>
@@ -524,13 +703,20 @@ export default function CfgWorkbench() {
             {breakpoints.size} breakpoint(s)
           </Tag>
         )}
+
+        <Tooltip title={connected ? "WebSocket connected — streaming mode active" : "WebSocket disconnected — using REST batch mode"}>
+          <Badge status={connected ? "success" : "default"} />
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {connected ? "Live" : "REST"}
+          </Text>
+        </Tooltip>
       </div>
 
       {/* Error banner */}
       {loadError && (
         <Alert
           type="error"
-          message={loadError}
+          title={loadError}
           closable
           onClose={() => setLoadError(null)}
           style={{ margin: "0 16px", marginTop: 8, flexShrink: 0 }}

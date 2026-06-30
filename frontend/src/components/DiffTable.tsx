@@ -30,7 +30,7 @@ export default function DiffTable({ diff }: Props) {
       <Alert
         type={hasAnyDiff ? "warning" : "success"}
         showIcon
-        message={
+        title={
           hasAnyDiff ? (
             <Typography.Text strong>检测到差异</Typography.Text>
           ) : (

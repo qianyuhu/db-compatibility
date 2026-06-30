@@ -231,7 +231,7 @@ export default function ReportQueryPage() {
 
           <Alert
             type={result.equal ? "success" : "warning"}
-            message={
+            title={
               result.equal ? (
                 <span><CheckCircleOutlined /> 双库报表结果一致</span>
               ) : (

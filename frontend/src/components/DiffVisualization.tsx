@@ -278,7 +278,6 @@ function Layer3View({ layer3, sourceDb, targetDb }: Layer3ViewProps) {
           key={`${diff.row_index}-${diff.field_name}-${idx}`}
           size="small"
           style={{ marginBottom: 8 }}
-          type="default"
           title={
             <span>
               <Tag color="red">Row #{diff.row_index + 1}</Tag>
@@ -352,7 +351,7 @@ function Layer3View({ layer3, sourceDb, targetDb }: Layer3ViewProps) {
           {diff.explanation && (
             <Alert
               type="info"
-              message={
+              title={
                 <span>
                   <BulbOutlined /> {diff.explanation.reason}
                 </span>
@@ -394,7 +393,7 @@ function ExplanationPanel({ explanations }: ExplanationPanelProps) {
                 ? "warning"
                 : "info"
           }
-          message={
+          title={
             <div>
               <div style={{ marginBottom: 4 }}>
                 <Badge color={severityColor(exp.severity)} text="" />
@@ -444,7 +443,7 @@ export default function DiffVisualization({
     return (
       <Alert
         type="info"
-        message="No enhanced diff data available"
+        title="No enhanced diff data available"
         description="The diff analysis could not be computed. See raw diff_detail for basic comparison."
         showIcon
       />

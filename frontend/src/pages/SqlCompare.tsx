@@ -237,7 +237,7 @@ export default function SqlCompare() {
         <Alert
           type="info"
           showIcon
-          message="💡 SQL 方言改写建议"
+          title="💡 SQL 方言改写建议"
           description={
             <div>
               {result.rewrites.map((rw, idx) => (

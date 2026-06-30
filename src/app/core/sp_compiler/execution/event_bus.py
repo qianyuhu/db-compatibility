@@ -16,8 +16,10 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
+if TYPE_CHECKING:
+    from .state import EventType
 
 # Matches ExecutionEngine.EventCallback signature
 EventListener = Callable[[str, str, dict | None], None]
@@ -68,6 +70,24 @@ class EventBus:
                 listener(event_type, node_id, data)
             except Exception:
                 pass  # Don't let one failing listener break others
+
+    def emit_event(
+        self,
+        event_type: EventType,
+        node_id: str = "",
+        data: dict | None = None,
+    ) -> None:
+        """Typed variant of ``emit()`` that accepts ``EventType`` enum values.
+
+        Delegates to ``emit()`` using ``event_type.value`` so existing
+        listeners see the same string-based event types they always have.
+
+        Args:
+            event_type: An ``EventType`` enum member.
+            node_id: The UINode ID (empty string for session-level events).
+            data: Optional event payload.
+        """
+        self.emit(event_type.value, node_id, data)
 
     def clear(self) -> None:
         """Remove all listeners."""

@@ -144,3 +144,31 @@ class TraceResponse(BaseModel):
     """Response containing execution trace data."""
     session_id: str
     trace: dict
+
+
+class SessionStatusResponse(BaseModel):
+    """Response describing the current state of an execution session.
+
+    Attributes:
+        session_id: The session identifier.
+        state: Current session state (INIT, RUNNING, PAUSED, FAILED, COMPLETED).
+        node_count: Total nodes in the graph model.
+        nodes_executed: Number of nodes that have been processed.
+        created_at: Unix timestamp when the session was created.
+    """
+    session_id: str
+    state: str = "INIT"
+    node_count: int = 0
+    nodes_executed: int = 0
+    created_at: float = 0.0
+
+
+class NodeStateResponse(BaseModel):
+    """Response describing the state of a single node within a session.
+
+    Attributes:
+        node_id: The node identifier.
+        state: Current node state (PENDING, RUNNING, SUCCESS, FAILED, SKIPPED).
+    """
+    node_id: str
+    state: str = "PENDING"

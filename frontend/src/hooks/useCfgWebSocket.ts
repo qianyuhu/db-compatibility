@@ -13,7 +13,7 @@ import { getWsUrl } from "../api/cfgWorkbench";
 // ---------------------------------------------------------------------------
 
 export interface WsEvent {
-  type: "node_started" | "node_finished" | "node_failed" | "execution_complete";
+  type: "node_started" | "node_finished" | "node_failed" | "node_skipped" | "execution_complete" | "execution_paused";
   node_id: string;
   timestamp: number;
   data?: Record<string, unknown>;
@@ -24,7 +24,9 @@ export interface UseCfgWebSocketOptions {
   onNodeStarted?: (nodeId: string) => void;
   onNodeFinished?: (nodeId: string, data: Record<string, unknown>) => void;
   onNodeFailed?: (nodeId: string, error: string) => void;
-  onExecutionComplete?: () => void;
+  onNodeSkipped?: (nodeId: string, reason: string) => void;
+  onExecutionComplete?: (data?: Record<string, unknown>) => void;
+  onExecutionPaused?: (nodeId: string) => void;
   onError?: (error: Event) => void;
 }
 
@@ -45,7 +47,9 @@ export function useCfgWebSocket(
     onNodeStarted,
     onNodeFinished,
     onNodeFailed,
+    onNodeSkipped,
     onExecutionComplete,
+    onExecutionPaused,
     onError,
   } = options;
 
@@ -54,6 +58,8 @@ export function useCfgWebSocket(
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const connect = useCallback(() => {
+    // Don't connect without a valid session ID
+    if (!sessionId) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const url = getWsUrl(sessionId);
@@ -80,8 +86,17 @@ export function useCfgWebSocket(
               ((msg.data as Record<string, string>)?.error) || "Unknown error",
             );
             break;
+          case "node_skipped":
+            onNodeSkipped?.(
+              msg.node_id,
+              ((msg.data as Record<string, string>)?.reason) || "Skipped",
+            );
+            break;
           case "execution_complete":
-            onExecutionComplete?.();
+            onExecutionComplete?.(msg.data as Record<string, unknown> | undefined);
+            break;
+          case "execution_paused":
+            onExecutionPaused?.(msg.node_id);
             break;
         }
       } catch {
@@ -95,12 +110,13 @@ export function useCfgWebSocket(
 
     ws.onclose = () => {
       setConnected(false);
-      // Reconnect after 3 seconds
+      // Only reconnect if we still have a session ID
+      if (!sessionId) return;
       reconnectTimer.current = setTimeout(() => {
         connect();
       }, 3000);
     };
-  }, [sessionId, onNodeStarted, onNodeFinished, onNodeFailed, onExecutionComplete, onError]);
+  }, [sessionId, onNodeStarted, onNodeFinished, onNodeFailed, onNodeSkipped, onExecutionComplete, onExecutionPaused, onError]);
 
   const sendCommand = useCallback(
     (command: string, payload?: Record<string, unknown>) => {

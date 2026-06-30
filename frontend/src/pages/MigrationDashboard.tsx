@@ -359,11 +359,11 @@ export default function MigrationDashboard() {
       setVerifyResult(res);
       if (res.verified) {
         message.success(
-          `✅ 全部 ${res.totalTables} 张表数据一致，迁移验证通过！`,
+          `✅ 全部 ${res.total_tables} 张表数据一致，迁移验证通过！`
         );
       } else {
         message.warning(
-          `⚠️ ${res.matchCount}/${res.totalTables} 张表一致，${res.totalTables - res.matchCount} 张表存在差异`,
+          `⚠️ ${res.match_count}/${res.total_tables} 张表一致，${res.total_tables - res.match_count} 张表存在差异`
         );
       }
     } catch (err: unknown) {
@@ -575,7 +575,7 @@ export default function MigrationDashboard() {
       {pipelineError && !pipelineLoading && (
         <Alert
           type="error"
-          message="迁移失败"
+          title="迁移失败"
           description={pipelineError}
           style={{ marginBottom: 24 }}
           showIcon
@@ -769,7 +769,7 @@ export default function MigrationDashboard() {
                     {phase.error && (
                       <Alert
                         type="error"
-                        message={phase.error}
+                        title={phase.error}
                         style={{ marginBottom: 8 }}
                       />
                     )}
@@ -798,7 +798,7 @@ export default function MigrationDashboard() {
                 <Alert
                   key={i}
                   type="warning"
-                  message={w}
+                  title={w}
                   style={{ marginBottom: 8 }}
                   showIcon
                 />
@@ -942,7 +942,7 @@ export default function MigrationDashboard() {
         {verifyResult && (
           <Alert
             type={verifyResult.verified ? "success" : "warning"}
-            message={
+            title={
               verifyResult.verified ? (
                 <span>
                   <CheckCircleOutlined /> 全部 {verifyResult.total_tables}{" "}
@@ -950,15 +950,15 @@ export default function MigrationDashboard() {
                 </span>
               ) : (
                 <span>
-                  <WarningOutlined /> {verifyResult.matchCount} /{" "}
+                  <WarningOutlined /> {verifyResult.match_count} /{" "}
                   {verifyResult.total_tables} 张表一致
-                  {verifyResult.total_tables - verifyResult.matchCount >
+                  {verifyResult.total_tables - verifyResult.match_count >
                     0 && (
                     <span>
                       ，{" "}
                       <Typography.Text type="danger">
                         {verifyResult.total_tables -
-                          verifyResult.matchCount}{" "}
+                          verifyResult.match_count}{" "}
                         张表存在差异
                       </Typography.Text>
                     </span>
@@ -1005,11 +1005,7 @@ export default function MigrationDashboard() {
               size="small"
               style={{ marginBottom: 12 }}
               type={
-                sqlResult
-                  ? sqlResult.equal
-                    ? "inner"
-                    : "default"
-                  : "default"
+                sqlResult?.equal ? "inner" : undefined
               }
               title={
                 <Space>
@@ -1062,7 +1058,7 @@ export default function MigrationDashboard() {
                 <>
                   <Alert
                     type={sqlResult.equal ? "success" : "warning"}
-                    message={
+                    title={
                       sqlResult.equal ? (
                         <span>
                           <CheckCircleOutlined /> 双库执行结果一致 —{" "}
@@ -1149,7 +1145,7 @@ export default function MigrationDashboard() {
                         <Alert
                           key={i}
                           type="warning"
-                          message={
+                          title={
                             <span>
                               <strong>{diff.field}:</strong>{" "}
                               <span style={{ color: "#1677ff" }}>
@@ -1351,7 +1347,7 @@ function CompactCompatAnalyzer({ sourceDb, targetDb }: CompactCompatAnalyzerProp
           />
         </Col>
         <Col>
-          <Space direction="vertical">
+          <Space orientation="vertical">
             <Button
               type="primary"
               icon={<RocketOutlined />}
@@ -1604,7 +1600,7 @@ function CompactCompatAnalyzer({ sourceDb, targetDb }: CompactCompatAnalyzerProp
               </Row>
               <Alert
                 type={result.execution_result.equal ? "success" : "warning"}
-                message={result.execution_result.equal ? "双库结果一致 ✅" : "双库结果存在差异 ⚠️"}
+                title={result.execution_result.equal ? "双库结果一致 ✅" : "双库结果存在差异 ⚠️"}
                 style={{ marginTop: 8 }}
                 showIcon={false}
               />
@@ -1615,7 +1611,7 @@ function CompactCompatAnalyzer({ sourceDb, targetDb }: CompactCompatAnalyzerProp
           {result.enhanced_diff && (
             <Card size="small" title="🔬 差异详情 (3-Layer Diff)" style={{ marginBottom: 12 }}>
               <DiffVisualization
-                enhancedDiff={result.enhanced_diff as ThreeLayerDiff}
+                enhancedDiff={result.enhanced_diff as unknown as ThreeLayerDiff}
                 sourceDb={sourceDb}
                 targetDb={targetDb}
               />
@@ -1626,7 +1622,7 @@ function CompactCompatAnalyzer({ sourceDb, targetDb }: CompactCompatAnalyzerProp
           {result.warnings.length > 0 && (
             <Alert
               type="warning"
-              message="分析警告"
+              title="分析警告"
               description={result.warnings.join("; ")}
               style={{ marginTop: 8 }}
               showIcon
@@ -1797,7 +1793,7 @@ function SandboxTestPanel({ sourceDb, targetDb }: SandboxTestPanelProps) {
         >
           Reset Sandbox
         </Button>
-        <Divider type="vertical" />
+        <Divider orientation="vertical" />
         <Select
           placeholder="Filter by tag"
           value={filterTag}
@@ -1812,7 +1808,7 @@ function SandboxTestPanel({ sourceDb, targetDb }: SandboxTestPanelProps) {
       {report && (
         <Alert
           type={seedOk ? "success" : seedOk === false ? "error" : "info"}
-          message={
+          title={
             seedOk
               ? "沙箱数据已就绪（MSSQL + KingbaseES 双库种子数据一致）"
               : seedOk === false
@@ -1921,7 +1917,7 @@ function SandboxTestPanel({ sourceDb, targetDb }: SandboxTestPanelProps) {
       {report && report.report.failed > 0 && (
         <Alert
           type="warning"
-          message={`失败详情 (${report.report.failed} 项)`}
+          title={`失败详情 (${report.report.failed} 项)`}
           description={
             <div>
               {report.report.results
@@ -2028,7 +2024,7 @@ function SandboxTestPanel({ sourceDb, targetDb }: SandboxTestPanelProps) {
                   {tc.known_issues.length > 0 && (
                     <Alert
                       type="info"
-                      message="已知差异"
+                      title="已知差异"
                       description={tc.known_issues.join("; ")}
                       style={{ marginTop: 8, fontSize: 12 }}
                       showIcon
@@ -2086,7 +2082,7 @@ function SandboxTestPanel({ sourceDb, targetDb }: SandboxTestPanelProps) {
                       {result.diff_summary && (
                         <Alert
                           type={result.status === "PASS" ? "success" : "warning"}
-                          message="差异摘要"
+                          title="差异摘要"
                           description={result.diff_summary}
                           style={{ marginBottom: 12 }}
                           showIcon
@@ -2096,7 +2092,7 @@ function SandboxTestPanel({ sourceDb, targetDb }: SandboxTestPanelProps) {
                       {result.error_message && (
                         <Alert
                           type="error"
-                          message="执行错误"
+                          title="执行错误"
                           description={result.error_message}
                           style={{ marginBottom: 12 }}
                           showIcon
@@ -2148,7 +2144,7 @@ function SandboxTestPanel({ sourceDb, targetDb }: SandboxTestPanelProps) {
                       {result.enhanced_diff && (
                         <Card size="small" title="3-Layer Diff">
                           <DiffVisualization
-                            enhancedDiff={result.enhanced_diff as ThreeLayerDiff}
+                            enhancedDiff={result.enhanced_diff as unknown as ThreeLayerDiff}
                             sourceDb={sourceDb}
                             targetDb={targetDb}
                           />
@@ -2505,7 +2501,7 @@ function RiskIntelligencePanel({ sourceDb, targetDb }: RiskIntelligencePanelProp
                     riskData.confidence_score.level === "HIGH" ? "success" :
                     riskData.confidence_score.level === "MEDIUM" ? "warning" : "error"
                   }
-                  message={riskData.confidence_score.recommendation}
+                  title={riskData.confidence_score.recommendation}
                   style={{ marginTop: 12 }}
                   showIcon
                 />
@@ -2520,7 +2516,7 @@ function RiskIntelligencePanel({ sourceDb, targetDb }: RiskIntelligencePanelProp
                 <Alert
                   key={idx}
                   type={idx === 0 ? "error" : "warning"}
-                  message={risk}
+                  title={risk}
                   style={{ marginBottom: 8 }}
                   showIcon
                 />
@@ -2634,7 +2630,7 @@ function RiskIntelligencePanel({ sourceDb, targetDb }: RiskIntelligencePanelProp
           {coverageData.critical_gaps.length > 0 && (
             <Alert
               type="warning"
-              message="Critical Coverage Gaps"
+              title="Critical Coverage Gaps"
               description={coverageData.critical_gaps.join("; ")}
               style={{ marginTop: 12 }}
               showIcon
@@ -2647,7 +2643,7 @@ function RiskIntelligencePanel({ sourceDb, targetDb }: RiskIntelligencePanelProp
       {!riskData && !preflightData && !coverageData && !loading && (
         <Alert
           type="info"
-          message="Click a button above to start risk analysis"
+          title="Click a button above to start risk analysis"
           description={
             <div>
               <p><strong>Full Risk Analysis</strong>: Run complete tests + multi-dimensional risk scoring + confidence assessment</p>
@@ -3020,7 +3016,7 @@ function ExecutionLoopPanel({
           {report && (
             <Alert
               type={report.executive_summary.phase === "STABILIZED" ? "success" : "warning"}
-              message={
+              title={
                 report.executive_summary.phase === "STABILIZED"
                   ? "✅ 执行循环已稳定"
                   : `⚠️ 循环阶段: ${report.executive_summary.phase}`
@@ -3060,7 +3056,7 @@ function ExecutionLoopPanel({
       {!state && !loading && (
         <Alert
           type="info"
-          message="执行循环尚未启动"
+          title="执行循环尚未启动"
           description={
             <div>
               <p><strong>启动执行循环</strong>：运行完整的 检测 → 分类 → 修复 → 重跑 → 验证 闭环流程</p>

@@ -252,7 +252,7 @@ export default function SqlMigrationPlan() {
 
           {/* Stats */}
           <Col xs={12} md={5}>
-            <Space direction="vertical" size={4}>
+            <Space orientation="vertical" size={4}>
               <Statistic
                 title="风险等级"
                 value={risk.label}
@@ -269,7 +269,7 @@ export default function SqlMigrationPlan() {
 
           {/* Feasibility */}
           <Col xs={12} md={4}>
-            <Space direction="vertical" size={4}>
+            <Space orientation="vertical" size={4}>
               <Statistic
                 title="迁移可行"
                 value={result.migration_feasible ? "是 ✓" : "否 ✗"}
@@ -288,7 +288,7 @@ export default function SqlMigrationPlan() {
 
           {/* Steps summary */}
           <Col xs={12} md={4}>
-            <Space direction="vertical" size={4}>
+            <Space orientation="vertical" size={4}>
               <Statistic
                 title="自动步骤"
                 value={result.plan.automatic_steps}
@@ -306,7 +306,7 @@ export default function SqlMigrationPlan() {
 
         {result.warnings.length > 0 && (
           <Alert
-            message="警告"
+            title="警告"
             description={result.warnings.join("；")}
             type="warning"
             showIcon
@@ -361,7 +361,7 @@ export default function SqlMigrationPlan() {
               </div>
               {impact.critical_tables.length > 0 && (
                 <Alert
-                  message={`${impact.critical_tables.length} 个关键表需要关注`}
+                  title={`${impact.critical_tables.length} 个关键表需要关注`}
                   type="warning"
                   showIcon
                   style={{ marginTop: 8, fontSize: 12 }}

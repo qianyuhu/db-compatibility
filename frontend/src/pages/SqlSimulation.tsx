@@ -272,7 +272,7 @@ export default function SqlSimulation() {
 
           {/* Risk & Verdict */}
           <Col xs={24} md={10}>
-            <Space direction="vertical" size={8}>
+            <Space orientation="vertical" size={8}>
               <div>
                 <Tag
                   color={verdict.color}
@@ -346,7 +346,7 @@ export default function SqlSimulation() {
         {/* Warnings */}
         {result.warnings.length > 0 && (
           <Alert
-            message="仿真警告"
+            title="仿真警告"
             description={result.warnings.join("；")}
             type="warning"
             showIcon
@@ -672,7 +672,7 @@ export default function SqlSimulation() {
             </Paragraph>
           </Col>
           <Col>
-            <Space direction="vertical" size={4} style={{ textAlign: "right" }}>
+            <Space orientation="vertical" size={4} style={{ textAlign: "right" }}>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 等价评分: <strong>{Math.round(result.equivalence_score * 100)}%</strong>
               </Text>

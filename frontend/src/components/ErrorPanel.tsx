@@ -10,7 +10,7 @@ export default function ErrorPanel({ error, suggestion }: Props) {
     <Alert
       type="error"
       showIcon
-      message={
+      title={
         <Typography.Text strong style={{ color: "#cf1322" }}>
           执行失败
         </Typography.Text>

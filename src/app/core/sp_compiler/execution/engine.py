@@ -1,27 +1,34 @@
 """
-Execution Engine — executes CFG/IR nodes against MSSQL, KingbaseES, and DM8.
+Execution Engine — compiles and executes stored procedures across MSSQL, KingbaseES, and DM8.
 
-Each node's SQL is executed in parallel across all configured databases.
-Results are compared and diffs computed. The engine is event-driven: it
-emits node_started, node_finished, and node_failed events via an optional
-callback, which the WebSocket layer hooks into for real-time UI updates.
+The engine compiles T-SQL stored procedures to each target dialect,
+creates them on the target databases, executes them, and compares results.
+It is event-driven: it emits node_started, node_finished, node_failed,
+and node_skipped events via an optional EventBus or callback.
 
 Usage:
     from app.core.sp_compiler.execution.engine import ExecutionEngine
 
     engine = ExecutionEngine(target_dbs=["mssql", "kingbasees", "dm8"])
-    result = engine.execute_node(ui_node)
+    result = engine.execute_procedure(original_tsql, proc_name)
+
+    # Session-aware via factory
+    engine = ExecutionEngine.for_session(session, target_dbs=["mssql"])
 """
 
 from __future__ import annotations
 
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from ..ir import IRSQL, IRIf, IRWhile
 from .event_bus import EventBus
+
+if TYPE_CHECKING:
+    from .session import Session, VariableEnvironment
 
 
 # ---------------------------------------------------------------------------
@@ -101,16 +108,11 @@ EventCallback = Callable[[str, str, dict | None], None]
 class ExecutionEngine:
     """Executes CFG/IR nodes across multiple databases with diff comparison.
 
-    The engine wraps the existing `execute_sql()` function to provide
-    node-level execution semantics. It handles:
-        - SQL nodes: execute the SQL text against all target DBs
-        - IF/WHILE nodes: evaluate the condition (structural — condition
-          truthiness depends on prior DB state; returns placeholder)
-        - ASSIGN nodes: no DB execution needed (in-memory state)
-        - Other nodes: skipped
-
-    All DB connections are made inline via execute_sql() — no persistent
-    session state is maintained.
+    The engine compiles T-SQL stored procedures to each target dialect,
+    extracts the executable SQL body, and runs it directly on each database.
+    Results are compared across databases. It is event-driven: it emits
+    node_started, node_finished, node_failed, and node_skipped events via
+    an optional EventBus or callback.
     """
 
     def __init__(
@@ -118,6 +120,7 @@ class ExecutionEngine:
         target_dbs: list[str] | None = None,
         event_callback: EventCallback | None = None,
         event_bus: EventBus | None = None,
+        variable_env: VariableEnvironment | None = None,
     ) -> None:
         """Initialize the execution engine.
 
@@ -128,183 +131,422 @@ class ExecutionEngine:
                             Deprecated in favor of event_bus.
             event_bus: Optional EventBus for fan-out event delivery.
                        Takes precedence over event_callback when both are set.
+            variable_env: Optional VariableEnvironment for stateful execution
+                          (enables IF/WHILE condition evaluation, ASSIGN).
         """
         self.target_dbs: list[str] = target_dbs or ["mssql", "kingbasees", "dm8"]
         self.event_callback = event_callback
         self.event_bus = event_bus
+        self.variable_env = variable_env
 
     # ------------------------------------------------------------------
-    # Node execution
+    # Factory
     # ------------------------------------------------------------------
 
-    def execute_node(self, ui_node: dict) -> NodeExecutionResult:
-        """Execute a single UI node against all target databases.
+    @staticmethod
+    def for_session(
+        session: Session,
+        target_dbs: list[str] | None = None,
+    ) -> ExecutionEngine:
+        """Create an engine wired to *session*'s event bus and variable env.
+
+        This is the preferred constructor when running within a Session —
+        it ensures events fan out to the session's tracer and WebSocket
+        forwarder, and that IF/WHILE/ASSIGN nodes share variable state.
+        """
+        return ExecutionEngine(
+            target_dbs=target_dbs,
+            event_bus=session.event_bus,
+            variable_env=session.variable_env,
+        )
+
+    # ------------------------------------------------------------------
+    # Procedure-level execution (compile → create → call → compare)
+    # ------------------------------------------------------------------
+
+    def execute_procedure(
+        self,
+        original_tsql: str,
+        proc_name: str,
+        node_ids: list[str] | None = None,
+    ) -> list[NodeExecutionResult]:
+        """Compile, create, and execute the stored procedure on all target DBs.
+
+        For each target database:
+          1. Compile T-SQL → target dialect (MSSQL uses original).
+          2. Parse parameters and generate test values.
+          3. CREATE the compiled procedure on the database.
+          4. CALL the procedure with test parameters and capture results.
+          5. Compare results across databases.
 
         Args:
-            ui_node: Dict with keys:
-                - id (str): Node identifier
-                - type (str): "sql" | "if" | "while" | "exec" | "assign" | etc.
-                - source (dict): IR source info including sql_text, condition, etc.
+            original_tsql: The original T-SQL stored procedure source.
+            proc_name: Extracted procedure name.
+            node_ids: Optional list of CFG node IDs for event emission.
 
         Returns:
-            NodeExecutionResult with per-DB results and diff.
+            List of NodeExecutionResult — one pseudo-result per DB comparison,
+            plus per-node status markers for the frontend.
         """
-        node_id = ui_node.get("id", "unknown")
-        node_type = ui_node.get("type", "sql")
-        source = ui_node.get("source", {})
-
-        self._emit("node_started", node_id)
-
-        try:
-            if node_type == "sql":
-                result = self._execute_sql_node(node_id, source)
-            elif node_type in ("if", "while"):
-                result = self._execute_branch_node(node_id, node_type, source)
-            elif node_type == "exec":
-                result = self._execute_exec_node(node_id, source)
-            elif node_type == "assign":
-                result = self._execute_assign_node(node_id, source)
-            else:
-                result = self._skip_node(node_id, node_type)
-
-            self._emit("node_finished", node_id, result)
-            return result
-
-        except Exception as exc:
-            result = NodeExecutionResult(
-                node_id=node_id,
-                status="failed",
-                execution_time_ms=0.0,
-            )
-            self._emit("node_failed", node_id, {"error": str(exc)})
-            return result
-
-    # ------------------------------------------------------------------
-    # Node type handlers
-    # ------------------------------------------------------------------
-
-    def _execute_sql_node(self, node_id: str, source: dict) -> NodeExecutionResult:
-        """Execute a SQL node — runs the SQL text against all target DBs."""
-        sql_text = source.get("sql_text", "").strip()
-        if not sql_text:
-            return NodeExecutionResult(
-                node_id=node_id,
-                status="skipped",
-            )
-
+        self._emit("node_started", "__procedure__")
         start = time.perf_counter()
         results: dict[str, DBResult] = {}
 
+        # Parse parameters from the original T-SQL
+        params = self._parse_proc_params(original_tsql)
+
+        # Compile for each target DB in parallel
+        compiled: dict[str, str] = {}
+        compile_errors: dict[str, str] = {}
+
+        def _compile_one(db_type: str) -> tuple[str, str | None]:
+            """Compile T-SQL for one target. Returns (code, error)."""
+            if db_type == "mssql":
+                return original_tsql, None
+            try:
+                from app.core.sp_compiler import compile_sp
+                cr = compile_sp(original_tsql, target_db=db_type)
+                if cr.success:
+                    return cr.generated_code, None
+                return "", "; ".join(cr.errors)
+            except Exception as exc:
+                return "", str(exc)
+
         with ThreadPoolExecutor(max_workers=len(self.target_dbs)) as pool:
-            futures = {
-                pool.submit(self._timed_execute, db_type, sql_text): db_type
-                for db_type in self.target_dbs
-            }
-            for future in as_completed(futures):
-                db_type = futures[future]
+            futs = {pool.submit(_compile_one, db): db for db in self.target_dbs}
+            for fut in as_completed(futs):
+                db = futs[fut]
+                code, err = fut.result(timeout=30)
+                if err:
+                    compile_errors[db] = err
+                else:
+                    compiled[db] = code
+
+        # Create & call on each DB in parallel
+        def _create_and_call(db_type: str, code: str) -> DBResult:
+            """Create the procedure on the DB, call it, return result."""
+            try:
+                from .db_connector import get_connection
+                t0 = time.perf_counter()
+                conn = get_connection(db_type)
                 try:
-                    results[db_type] = future.result(timeout=30)
-                except Exception as exc:
-                    results[db_type] = DBResult(
+                    cur = conn.cursor()
+
+                    # Prepare the code for execution (fix return types, etc.)
+                    exec_code = self._prepare_for_execution(db_type, code, proc_name)
+
+                    # Check if the prepared code is a direct SELECT (no function wrapper)
+                    is_direct_select = exec_code.strip().upper().startswith("SELECT")
+
+                    if is_direct_select:
+                        # Execute the SELECT directly
+                        cur.execute(exec_code)
+                    else:
+                        # For KingbaseES, we use a wrapper function _cfg_exec
+                        call_name = "_cfg_exec" if db_type == "kingbasees" else proc_name
+
+                        # Drop existing function/procedure first
+                        try:
+                            if db_type == "mssql":
+                                cur.execute(f"DROP PROCEDURE IF EXISTS {proc_name}")
+                            elif db_type == "kingbasees":
+                                type_sig = ", ".join(p["target_type"] for p in params) if params else ""
+                                cur.execute(f"DROP FUNCTION IF EXISTS _cfg_exec({type_sig})")
+                            elif db_type == "dm8":
+                                cur.execute(f"DROP PROCEDURE IF EXISTS {proc_name}")
+                        except Exception:
+                            pass
+
+                        # Create the procedure/function
+                        cur.execute(exec_code)
+
+                        # Build and execute the CALL statement
+                        call_sql = self._build_call_sql(db_type, call_name, params)
+                        cur.execute(call_sql)
+
+                    columns = [d[0] for d in cur.description] if cur.description else []
+                    rows = [list(r) for r in cur.fetchall()] if cur.description else []
+                    cur.close()
+
+                    elapsed = (time.perf_counter() - t0) * 1000
+                    return DBResult(
                         db_type=db_type,
-                        success=False,
-                        error=str(exc),
+                        success=True,
+                        columns=columns,
+                        rows=rows,
+                        row_count=len(rows),
+                        execution_time_ms=elapsed,
                     )
+                finally:
+                    conn.close()
+            except Exception as exc:
+                return DBResult(
+                    db_type=db_type,
+                    success=False,
+                    error=str(exc),
+                )
+
+        with ThreadPoolExecutor(max_workers=len(compiled)) as pool:
+            futs = {
+                pool.submit(_create_and_call, db, code): db
+                for db, code in compiled.items()
+            }
+            for fut in as_completed(futs):
+                db = futs[fut]
+                results[db] = fut.result(timeout=60)
+
+        # Add compile errors as failed results
+        for db, err in compile_errors.items():
+            results[db] = DBResult(db_type=db, success=False, error=f"Compile error: {err}")
 
         elapsed = (time.perf_counter() - start) * 1000
 
-        # Compute diff across results
+        # Compute cross-DB diff
         diff = self._compute_diff(results)
-
         all_success = all(r.success for r in results.values())
         status = "success" if all_success else "failed"
 
-        return NodeExecutionResult(
-            node_id=node_id,
+        proc_result = NodeExecutionResult(
+            node_id="__procedure__",
             status=status,
             results=results,
             diff=diff,
             execution_time_ms=elapsed,
         )
+        self._emit("node_finished", "__procedure__", proc_result)
 
-    def _execute_branch_node(
-        self, node_id: str, node_type: str, source: dict
-    ) -> NodeExecutionResult:
-        """Handle IF/WHILE nodes. These are structural — no SQL execution.
+        # Build per-node results: all nodes inherit the procedure result
+        node_results: list[NodeExecutionResult] = [proc_result]
+        if node_ids:
+            for nid in node_ids:
+                node_results.append(NodeExecutionResult(
+                    node_id=nid,
+                    status=status,
+                    results=results,
+                    diff=diff,
+                    execution_time_ms=elapsed,
+                ))
 
-        Branch nodes are placeholders in the graph. Their conditions cannot be
-        evaluated without live DB state from prior nodes. We mark them as
-        skipped but preserve the condition for the UI to display.
-        """
-        return NodeExecutionResult(
-            node_id=node_id,
-            status="skipped",
-        )
-
-    def _execute_exec_node(self, node_id: str, source: dict) -> NodeExecutionResult:
-        """Handle EXEC nodes. The procedure name is extracted but cannot be
-        directly executed since referenced procedures may not exist on all DBs.
-        """
-        return NodeExecutionResult(
-            node_id=node_id,
-            status="skipped",
-        )
-
-    def _execute_assign_node(self, node_id: str, source: dict) -> NodeExecutionResult:
-        """Handle ASSIGN nodes. Variable assignments are in-memory state
-        within the SP execution context — no DB round-trip needed.
-        """
-        return NodeExecutionResult(
-            node_id=node_id,
-            status="skipped",
-        )
-
-    def _skip_node(self, node_id: str, node_type: str) -> NodeExecutionResult:
-        """Skip a node type that has no executable semantics."""
-        return NodeExecutionResult(
-            node_id=node_id,
-            status="skipped",
-        )
-
-    # ------------------------------------------------------------------
-    # SQL execution (wrapping existing execute_sql)
-    # ------------------------------------------------------------------
+        return node_results
 
     @staticmethod
-    def _timed_execute(db_type: str, sql: str) -> DBResult:
-        """Execute SQL against one database and time it.
+    def _parse_proc_params(tsql: str) -> list[dict]:
+        """Parse parameter names and types from T-SQL CREATE PROCEDURE header.
 
-        Uses the existing execute_sql() from the sql_demo service layer.
-        Falls back gracefully if the service is unavailable (e.g., unit tests).
+        Returns list of dicts with keys: name, tsql_type, target_type, test_value.
         """
-        try:
-            from app.api.sql_demo.service import execute_sql
+        header_match = re.search(
+            r"CREATE\s+(?:OR\s+ALTER\s+)?PROCEDURE\s+\w+\s*\((.*?)\)\s*\bAS\b",
+            tsql,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not header_match:
+            # Try without parentheses
+            header_match = re.search(
+                r"CREATE\s+(?:OR\s+ALTER\s+)?PROCEDURE\s+\w+\s+(.*?)\s*\bAS\b",
+                tsql,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if not header_match:
+                return []
+            params_text = header_match.group(1).strip()
+            # Check if it looks like params (has @)
+            if '@' not in params_text:
+                return []
+        else:
+            params_text = header_match.group(1).strip()
 
-            t0 = time.perf_counter()
-            raw = execute_sql(db_type, sql)
-            elapsed = (time.perf_counter() - t0) * 1000
+        params = []
+        # Split on commas not inside parentheses
+        parts = []
+        depth = 0
+        current = ""
+        for ch in params_text:
+            if ch == '(':
+                depth += 1
+                current += ch
+            elif ch == ')':
+                depth -= 1
+                current += ch
+            elif ch == ',' and depth == 0:
+                parts.append(current.strip())
+                current = ""
+            else:
+                current += ch
+        if current.strip():
+            parts.append(current.strip())
 
-            return DBResult(
-                db_type=db_type,
-                success=raw.get("success", False),
-                columns=list(raw.get("columns", [])),
-                rows=[list(row) for row in raw.get("rows", [])],
-                row_count=raw.get("row_count", 0),
-                execution_time_ms=elapsed,
-                error=raw.get("error"),
+        for part in parts:
+            m = re.match(r"@(\w+)\s+(\w+(?:\s*\([^)]*\))?)", part.strip())
+            if m:
+                name = m.group(1)
+                tsql_type = m.group(2).strip().upper()
+
+                # Map T-SQL type to target types and test values
+                if tsql_type in ("INT", "BIGINT", "SMALLINT", "TINYINT"):
+                    target_type = "INTEGER"
+                    test_value = "0"
+                elif tsql_type in ("FLOAT", "REAL", "DECIMAL", "NUMERIC"):
+                    target_type = "NUMERIC"
+                    test_value = "0"
+                elif "CHAR" in tsql_type or "TEXT" in tsql_type:
+                    target_type = "VARCHAR"
+                    test_value = "'test'"
+                elif tsql_type in ("BIT",):
+                    target_type = "BOOLEAN"
+                    test_value = "FALSE"
+                else:
+                    target_type = "VARCHAR"
+                    test_value = "'test'"
+
+                params.append({
+                    "name": name,
+                    "tsql_type": tsql_type,
+                    "target_type": target_type,
+                    "test_value": test_value,
+                })
+
+        return params
+
+    @staticmethod
+    def _build_call_sql(db_type: str, proc_name: str, params: list[dict]) -> str:
+        """Build the SQL to call a stored procedure on the target DB."""
+        test_values = ", ".join(p["test_value"] for p in params)
+        args = f"({test_values})" if test_values else "()"
+
+        if db_type == "mssql":
+            if params:
+                return f"EXEC {proc_name} {test_values}"
+            return f"EXEC {proc_name}"
+        elif db_type == "kingbasees":
+            # For RETURNS text: SELECT func() AS result
+            return f"SELECT {proc_name}{args} AS result"
+        elif db_type == "dm8":
+            return f"CALL {proc_name}{args}"
+        return f"SELECT {proc_name}{args}"
+
+    @staticmethod
+    def _prepare_for_execution(db_type: str, code: str, proc_name: str = "") -> str:
+        """Prepare generated code for execution on the target DB.
+
+        For MSSQL: return original T-SQL as-is (CREATE PROCEDURE).
+        For KingbaseES: fix the generated function to return result sets.
+        For DM8: fix the generated procedure for execution.
+        """
+        if db_type == "mssql":
+            return code
+
+        elif db_type == "kingbasees":
+            # Extract parameter name mapping from function header
+            # e.g. p_product_id INTEGER → {"product_id": "p_product_id"}
+            param_map: dict[str, str] = {}
+            param_header = re.search(
+                r"FUNCTION\s+\w+\s*\((.*?)\)", code, re.IGNORECASE | re.DOTALL
             )
-        except ImportError:
-            return DBResult(
-                db_type=db_type,
-                success=False,
-                error="execute_sql not available (service layer not loaded)",
+            if param_header:
+                for pm in re.finditer(r"(\w+)\s+\w+", param_header.group(1)):
+                    full_name = pm.group(1)
+                    # Strip common prefixes like p_
+                    base = re.sub(r"^p_", "", full_name)
+                    param_map[base] = full_name
+
+            # Fix parameter references: @param → p_param (using mapping)
+            def _replace_param(m):
+                name = m.group(1)
+                return param_map.get(name, name)
+            code = re.sub(r"@(\w+)", _replace_param, code)
+
+            # Fix string literals that lost their quotes
+            code = re.sub(
+                r"SELECT\s+([A-Za-z][A-Za-z ]*?)\s+AS\b",
+                lambda m: f"SELECT '{m.group(1).strip()}' AS" if not m.group(1).strip().startswith("'") else m.group(0),
+                code,
+                flags=re.IGNORECASE,
             )
-        except Exception as exc:
-            return DBResult(
-                db_type=db_type,
-                success=False,
-                error=str(exc),
+
+            # Extract the body between BEGIN and END
+            body_match = re.search(
+                r"\$\$\s*(?:DECLARE\s*(.*?)\s*)?BEGIN\s*(.*?)\s*END\s*;\s*\$\$",
+                code,
+                re.DOTALL | re.IGNORECASE,
             )
+            if not body_match:
+                return code
+
+            declarations = body_match.group(1) or ""
+            body = body_match.group(2) or ""
+
+            # Fix ELSE pattern: END IF; BEGIN ... END; → ELSE ... END IF;
+            body = re.sub(
+                r"END\s+IF\s*;\s*BEGIN\s*(.*?)\s*END\s*;",
+                r"ELSE\n        \1\n    END IF;",
+                body,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+
+            # Fix variable assignments: SELECT col INTO var FROM → var := (SELECT col FROM)
+            body = re.sub(
+                r"SELECT\s+([\w.]+)\s+INTO\s+(\w+)\s+FROM\b",
+                r"\2 := (SELECT \1 FROM",
+                body,
+                flags=re.IGNORECASE,
+            )
+            # Close the subquery parenthesis
+            body = re.sub(
+                r"(\w+)\s*:=\s*\(SELECT\s+([\w.]+)\s+FROM\b([^;]+);",
+                r"\1 := (SELECT \2 FROM\3);",
+                body,
+                flags=re.IGNORECASE,
+            )
+
+            # Convert SELECT 'literal' AS col → RETURN 'literal'
+            body = re.sub(
+                r"SELECT\s+'([^']*)'\s+AS\s+\w+",
+                r"RETURN '\1'",
+                body,
+                flags=re.IGNORECASE,
+            )
+
+            # Extract parameter declarations from the function header
+            param_match = re.search(
+                r"FUNCTION\s+\w+\s*\((.*?)\)", code, re.IGNORECASE | re.DOTALL
+            )
+            params_decl = param_match.group(1).strip() if param_match else ""
+
+            # Detect if body has bare table SELECTs (SELECT ... FROM table)
+            # that aren't part of an assignment (var := (SELECT ...))
+            has_table_select = bool(re.search(
+                r"(?<!:= \()SELECT\s+[\w.*, ]+\s+FROM\b",
+                body,
+                re.IGNORECASE,
+            ))
+
+            if has_table_select:
+                # For table queries, just extract and execute the SELECT directly
+                # No function wrapper needed
+                # Find the SELECT ... FROM ... statement
+                select_match = re.search(
+                    r"(SELECT\s+[\w.*, ]+\s+FROM\b[^;]+)",
+                    body,
+                    re.IGNORECASE,
+                )
+                if select_match:
+                    return select_match.group(1).strip()
+                return body.strip()
+            else:
+                # Use RETURNS text for literal-only results
+                func = f"CREATE OR REPLACE FUNCTION _cfg_exec({params_decl})\n"
+                func += "RETURNS text AS $$\n"
+                if declarations.strip():
+                    decls = re.sub(r"--[^\n]*", "", declarations).strip()
+                    func += f"DECLARE\n    {decls}\n"
+                func += "BEGIN\n"
+                func += body
+                func += "\n    RETURN NULL;\n"
+                func += "END;\n$$ LANGUAGE plpgsql;"
+                return func
+
+        return code
 
     # ------------------------------------------------------------------
     # Diff computation
@@ -393,6 +635,168 @@ class ExecutionEngine:
             value_diffs=value_diffs,
             status=status,
         )
+
+    # ------------------------------------------------------------------
+    # Condition / Expression evaluation
+    # ------------------------------------------------------------------
+
+    def _evaluate_condition(self, condition: str) -> bool | None:
+        """Evaluate a T-SQL condition string against the variable environment.
+
+        Supported patterns (case-insensitive):
+
+        * ``@var = value`` / ``@var == value``
+        * ``@var != value`` / ``@var <> value``
+        * ``@var > value`` / ``@var < value`` / ``@var >= value`` / ``@var <= value``
+        * ``@var IS NULL`` / ``@var IS NOT NULL``
+        * Integer comparisons: ``@var = 0`` etc.
+
+        Returns ``None`` when evaluation is not possible (unknown variable,
+        unparseable expression, or no variable env).
+        """
+        if self.variable_env is None:
+            return None
+
+        condition = condition.strip()
+
+        # IS NULL / IS NOT NULL
+        m = re.match(
+            r"@(\w+)\s+IS\s+(NOT\s+)?NULL", condition, re.IGNORECASE
+        )
+        if m:
+            var = self.variable_env.get(f"@{m.group(1)}")
+            is_not = bool(m.group(2))
+            if var is not None:
+                return (var.value is not None) if is_not else (var.value is None)
+            return None
+
+        # Comparison operators
+        m = re.match(
+            r"@(\w+)\s*(==|!=|<>|>=|<=|>|<|=)\s*(.+)", condition, re.IGNORECASE
+        )
+        if m:
+            var_name = f"@{m.group(1)}"
+            op = m.group(2).strip()
+            rhs_raw = m.group(3).strip()
+
+            var = self.variable_env.get(var_name)
+            if var is None or var.value is None:
+                return None
+
+            # Resolve RHS: could be a literal or a variable reference (@other_var)
+            rhs = self._resolve_value(rhs_raw)
+
+            return self._compare(var.value, op, rhs)
+
+        return None
+
+    @staticmethod
+    def _compare(
+        left: str | int | float,
+        op: str,
+        right: str,
+    ) -> bool | None:
+        """Compare *left* (variable value) and *right* (literal string)."""
+        # Try numeric comparison first
+        try:
+            l_num = float(left)
+            r_num = float(right)
+            left_val: str | int | float = l_num
+            right_val: str | int | float = r_num
+        except (ValueError, TypeError):
+            left_val = str(left)
+            right_val = right
+
+        if op in ("=", "=="):
+            return left_val == right_val
+        if op in ("!=", "<>"):
+            return left_val != right_val
+        if op == ">":
+            return left_val > right_val  # type: ignore[operator]
+        if op == "<":
+            return left_val < right_val  # type: ignore[operator]
+        if op == ">=":
+            return left_val >= right_val  # type: ignore[operator]
+        if op == "<=":
+            return left_val <= right_val  # type: ignore[operator]
+        return None
+
+    def _resolve_value(self, raw: str) -> str | int | float:
+        """Resolve a value string from a condition's RHS.
+
+        Handles:
+        * Variable references: ``@other_var`` → looked up in variable_env
+        * Quoted strings: ``'hello'`` → stripped quotes
+        * Numeric literals: ``42`` → int, ``3.14`` → float
+        * Bare strings: returned as-is
+        """
+        raw = raw.strip()
+
+        # Variable reference — look up in env
+        if raw.startswith("@") and self.variable_env is not None:
+            var = self.variable_env.get(raw)
+            if var is not None and var.value is not None:
+                return var.value
+
+        # Quoted string literal
+        if (raw.startswith("'") and raw.endswith("'")) or \
+           (raw.startswith('"') and raw.endswith('"')):
+            return raw[1:-1]
+
+        # Numeric literal
+        try:
+            if "." in raw:
+                return float(raw)
+            return int(raw)
+        except ValueError:
+            pass
+
+        return raw
+
+    def _evaluate_expression(self, expression: str) -> str | int | float | None:
+        """Evaluate a simple assignment expression.
+
+        Handles:
+        * String literals: ``'hello'``
+        * Numeric literals: ``42``, ``3.14``
+        * Variable references: ``@other_var``
+        * Simple arithmetic: ``@var + 1``
+
+        Returns the evaluated value, or the raw expression string if it
+        cannot be evaluated.
+        """
+        expression = expression.strip()
+
+        # String literal
+        if (expression.startswith("'") and expression.endswith("'")) or \
+           (expression.startswith('"') and expression.endswith('"')):
+            return expression[1:-1]
+
+        # Numeric literal
+        try:
+            if "." in expression:
+                return float(expression)
+            return int(expression)
+        except ValueError:
+            pass
+
+        # Variable reference
+        m = re.match(r"@(\w+)$", expression)
+        if m and self.variable_env is not None:
+            var = self.variable_env.get(f"@{m.group(1)}")
+            if var is not None:
+                return var.value
+
+        # Simple addition: @var + N
+        m = re.match(r"@(\w+)\s*\+\s*(\d+)", expression)
+        if m and self.variable_env is not None:
+            var = self.variable_env.get(f"@{m.group(1)}")
+            increment = int(m.group(2))
+            if var is not None and isinstance(var.value, (int, float)):
+                return var.value + increment
+
+        # Return raw expression as string
+        return expression
 
     # ------------------------------------------------------------------
     # Event emission

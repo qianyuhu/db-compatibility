@@ -330,7 +330,7 @@ export default function InventoryQuery() {
 
           <Alert
             type={queryResult.equal ? "success" : "warning"}
-            message={
+            title={
               queryResult.equal ? (
                 <span><CheckCircleOutlined /> 双库库存数据一致</span>
               ) : (
@@ -412,7 +412,7 @@ export default function InventoryQuery() {
                 <Alert
                   key={i}
                   type="warning"
-                  message={
+                  title={
                     <span>
                       <strong>{diff.field}:</strong>{" "}
                       <span style={{ color: "#1677ff" }}>
@@ -434,7 +434,7 @@ export default function InventoryQuery() {
           {queryResult.equal && (
             <Alert
               type="success"
-              message={`数据完全一致 — ${sourceDb.toUpperCase()} 和 ${targetDb.toUpperCase()} 返回相同结果`}
+              title={`数据完全一致 — ${sourceDb.toUpperCase()} 和 ${targetDb.toUpperCase()} 返回相同结果`}
               style={{ marginTop: 12 }}
               showIcon={false}
             />
@@ -503,7 +503,7 @@ export default function InventoryQuery() {
 
           <Alert
             type={adjustResult.equal ? "success" : "warning"}
-            message={
+            title={
               adjustResult.equal ? (
                 <span><CheckCircleOutlined /> 双库调整一致</span>
               ) : (

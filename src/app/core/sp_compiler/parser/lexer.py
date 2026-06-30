@@ -139,7 +139,8 @@ def _is_whitespace(ch: str) -> bool:
 
 
 def _is_alpha(ch: str) -> bool:
-    return ("a" <= ch <= "z") or ("A" <= ch <= "Z") or ch == "_"
+    """Check if character is alphabetic (ASCII + Unicode/CJK)."""
+    return ("a" <= ch <= "z") or ("A" <= ch <= "Z") or ch == "_" or ch.isalpha()
 
 
 def _is_digit(ch: str) -> bool:
@@ -308,15 +309,21 @@ def tokenize(text: str, *, skip_comments: bool = True) -> list[Token]:
         return _make_token(TokenType.NUMBER, "".join(value_chars), tk_line, tk_col)
 
     def _scan_variable() -> Token:
-        """Scan @variable — normalize by stripping @ prefix."""
+        """Scan @variable — normalize by stripping @ prefix.
+        
+        Supports T-SQL variable naming conventions including:
+          - @var (regular variable)
+          - @@ROWCOUNT (system variable)
+          - @#temp, @##global (hash-prefixed names)
+        """
         tk_line, tk_col = line, col
         _advance()  # consume @
-        if pos >= length or not (_is_alpha(_peek()) or _peek() == "@"):
+        if pos >= length or not (_is_alpha(_peek()) or _peek() == "@" or _peek() == "#"):
             # @@ system variables like @@IDENTITY, @@ROWCOUNT
             if _peek() == "@":
                 _advance()
                 var_chars: list[str] = []
-                while pos < length and _is_alphanumeric(_peek()):
+                while pos < length and (_is_alphanumeric(_peek()) or _peek() == "#"):
                     var_chars.append(_peek())
                     _advance()
                 # Keep @@ prefix for system variables
@@ -324,7 +331,8 @@ def tokenize(text: str, *, skip_comments: bool = True) -> list[Token]:
             return _make_token(TokenType.VARIABLE, "", tk_line, tk_col)
 
         var_chars: list[str] = []
-        while pos < length and _is_alphanumeric(_peek()):
+        # Allow leading # characters (e.g., @##user → name is "##user")
+        while pos < length and (_is_alphanumeric(_peek()) or _peek() == "#"):
             var_chars.append(_peek())
             _advance()
         return _make_token(TokenType.VARIABLE, "".join(var_chars), tk_line, tk_col)
@@ -402,9 +410,19 @@ def tokenize(text: str, *, skip_comments: bool = True) -> list[Token]:
                 tokens.append(token)
             continue
 
-        # String literal
+        # String literal (including N'...' Unicode strings)
         if ch == "'":
             tokens.append(_scan_string("'"))
+            continue
+
+        # N'...' Unicode string literal (T-SQL)
+        if (ch == "N" or ch == "n") and _peek(1) == "'":
+            tk_line, tk_col = line, col
+            _advance()  # consume N prefix
+            token = _scan_string("'")
+            # Mark as Unicode string by prepending N to value
+            token = _make_token(TokenType.STRING, "N" + token.value, tk_line, tk_col)
+            tokens.append(token)
             continue
 
         # Variable

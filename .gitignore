@@ -33,3 +33,7 @@ node_modules/
 
 # RepoWiki auto-generated knowledge base
 .qoder/
+
+# Temp / scratch files
+1
+*.png

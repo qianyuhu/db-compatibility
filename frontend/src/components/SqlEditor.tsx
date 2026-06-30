@@ -1,6 +1,6 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
-import { useRef } from "react";
+import { useRef, useEffect, useCallback } from "react";
 
 interface Props {
   value: string;
@@ -10,18 +10,79 @@ interface Props {
 
 export default function SqlEditor({ value, onChange, onExecute }: Props) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const onChangeRef = useRef(onChange);
+  const onExecuteRef = useRef(onExecute);
+  const lastExternalValue = useRef(value);
+  const isMounted = useRef(false);
+  // Flag: set true when the change originated from inside the editor
+  // (typing / paste / undo). Prevents useEffect from calling model.setValue()
+  // which would destroy cursor position and paste formatting.
+  const isInternalChange = useRef(false);
 
-  const handleMount: OnMount = (editor, monaco) => {
+  // Keep refs in sync so closures always have the latest callbacks
+  onChangeRef.current = onChange;
+  onExecuteRef.current = onExecute;
+
+  // Handle external value changes (e.g. "apply rewrite suggestion")
+  // WITHOUT interfering with typing / paste / undo inside the editor.
+  useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true;
+      lastExternalValue.current = value;
+      return;
+    }
+    // If the change came from inside the editor (user typed / pasted),
+    // just sync the ref and skip — the model already has the right content.
+    if (isInternalChange.current) {
+      isInternalChange.current = false;
+      lastExternalValue.current = value;
+      return;
+    }
+    if (value === lastExternalValue.current) return;
+    lastExternalValue.current = value;
+
+    const editor = editorRef.current;
+    if (!editor) return;
+    const model = editor.getModel();
+    if (!model) return;
+
+    // Only overwrite when the model content actually differs
+    if (model.getValue() !== value) {
+      model.pushStackElement();
+      model.setValue(value);
+    }
+  }, [value]);
+
+  const handleMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
+
+    // Set initial value imperatively
+    const model = editor.getModel();
+    if (model && model.getValue() !== value) {
+      model.setValue(value);
+    }
+
+    // Listen for content changes — mark as internal so useEffect won't
+    // call model.setValue() and destroy paste formatting / cursor position.
+    editor.onDidChangeModelContent(() => {
+      const model = editor.getModel();
+      if (model) {
+        const newValue = model.getValue();
+        lastExternalValue.current = newValue;
+        isInternalChange.current = true;
+        onChangeRef.current(newValue);
+      }
+    });
 
     // Ctrl/Cmd+Enter to execute
     editor.addAction({
       id: "execute-sql",
       label: "Execute SQL",
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-      run: () => onExecute(),
+      run: () => onExecuteRef.current(),
     });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div style={{ border: "1px solid #d9d9d9", borderRadius: 8, overflow: "hidden" }}>
@@ -46,8 +107,6 @@ export default function SqlEditor({ value, onChange, onExecute }: Props) {
         height="220px"
         language="sql"
         theme="vs-dark"
-        value={value}
-        onChange={(v) => onChange(v ?? "")}
         onMount={handleMount}
         loading={<div style={{ padding: 24, textAlign: "center" }}>加载编辑器...</div>}
         options={{
@@ -58,7 +117,6 @@ export default function SqlEditor({ value, onChange, onExecute }: Props) {
           wordWrap: "on",
           automaticLayout: true,
           tabSize: 2,
-          placeholder: "输入 SQL 语句...",
         }}
       />
     </div>

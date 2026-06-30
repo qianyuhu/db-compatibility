@@ -47,6 +47,18 @@ from ..ir import (
 class PlPgSQLGenerator:
     """Generate PL/pgSQL procedure code from IR for KingbaseES / PostgreSQL."""
 
+    def __init__(self) -> None:
+        self._param_names: set[str] = set()
+
+    @staticmethod
+    def _normalize_name(name: str) -> str:
+        """Normalize a T-SQL identifier for PL/pgSQL.
+        
+        Strips ## prefix (T-SQL global temp naming convention) since
+        PL/pgSQL doesn't support # in identifiers.
+        """
+        return name.lstrip("#")
+
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
@@ -60,6 +72,9 @@ class PlPgSQLGenerator:
         Returns:
             Complete PL/pgSQL source code as a string.
         """
+        # Store parameter names for expression rewriting (normalized, without ## prefix)
+        self._param_names = {self._normalize_name(p.name) for p in ir.parameters}
+
         lines: list[str] = []
 
         # Header
@@ -105,13 +120,14 @@ class PlPgSQLGenerator:
         parts: list[str] = []
         for p in params:
             pg_type = self._map_data_type(p.data_type)
+            pname = self._normalize_name(p.name)
             if p.is_output:
-                parts.append(f"INOUT p_{p.name} {pg_type}")
+                parts.append(f"INOUT p_{pname} {pg_type}")
             else:
                 default = ""
                 if p.default_value is not None:
                     default = f" DEFAULT {p.default_value}"
-                parts.append(f"p_{p.name} {pg_type}{default}")
+                parts.append(f"p_{pname} {pg_type}{default}")
         return ", ".join(parts)
 
     # ------------------------------------------------------------------
@@ -136,7 +152,8 @@ class PlPgSQLGenerator:
             default = ""
             if v.default_value is not None:
                 default = f" := {v.default_value}"
-            lines.append(f"    {v.name} {pg_type}{default};")
+            vname = self._normalize_name(v.name)
+            lines.append(f"    {vname} {pg_type}{default};")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -177,9 +194,10 @@ class PlPgSQLGenerator:
 
     def _generate_variable_node(self, node: IRVariable, indent: int) -> str:
         """Variables are handled in DECLARE section; skip in body."""
+        vname = self._normalize_name(node.name)
         if node.scope == VariableScope.LOCAL:
-            return f"{'    ' * indent}-- (variable {node.name} declared in DECLARE section)"
-        return f"{'    ' * indent}-- parameter: {node.name}"
+            return f"{'    ' * indent}-- (variable {vname} declared in DECLARE section)"
+        return f"{'    ' * indent}-- parameter: {vname}"
 
     def _generate_assign(self, node: IRAssign, indent: int) -> str:
         """SET @var = expr → var := expr;
@@ -193,18 +211,20 @@ class PlPgSQLGenerator:
         if not node.target:
             return f"{prefix}-- {node.expression} (no PL/pgSQL equivalent)"
 
+        target = self._normalize_name(node.target)
+
         if node.is_scalar_query:
             # SELECT ... INTO var pattern
             if node.expression.upper().startswith("SELECT"):
                 # Insert INTO clause: SELECT col INTO var FROM ...
-                sql = self._rewrite_select_into(node.expression, node.target)
+                sql = self._rewrite_select_into(node.expression, target)
                 return f"{prefix}{sql};"
             else:
-                return f"{prefix}{node.target} := ({node.expression});"
+                return f"{prefix}{target} := ({node.expression});"
 
         # Standard assignment
         expr = self._rewrite_expression(node.expression)
-        return f"{prefix}{node.target} := {expr};"
+        return f"{prefix}{target} := {expr};"
 
     def _generate_sql(self, node: IRSQL, indent: int) -> str:
         """Embed SQL statement directly.
@@ -316,13 +336,24 @@ class PlPgSQLGenerator:
         """Apply T-SQL → PL/pgSQL expression rewrites.
 
         Handles:
-            @variable → variable (strip @)
+            @variable → p_variable (for parameters) or variable (for locals)
             GETDATE() → NOW()
             ISNULL(a,b) → COALESCE(a,b)
             LEN(s) → LENGTH(s)
             NEWID() → gen_random_uuid()
         """
-        expr = expr.replace("@", "")  # Strip @ prefix from variables
+        import re
+
+        # Rewrite @param → p_param for parameters, @var → var for locals
+        # Handles @## prefixed names (e.g., @##user → p_user)
+        def _rewrite_var(m):
+            raw_name = m.group(1)  # may include ## prefix
+            name = self._normalize_name(raw_name)
+            if name in self._param_names:
+                return f"p_{name}"
+            return name
+
+        expr = re.sub(r"@([#]?[#]?\w+)", _rewrite_var, expr)
 
         # Function name replacements (word-boundary aware)
         replacements = [
@@ -386,6 +417,16 @@ class PlPgSQLGenerator:
 
         # Rewrite bracket identifiers to double-quoted
         sql = re.sub(r"\[([^\]]+)\]", r'"\1"', sql)
+
+        # Rewrite @param → p_param for parameters, @var → var for locals
+        # Handles @## prefixed names (e.g., @##user → p_user)
+        def _rewrite_var(m):
+            raw_name = m.group(1)
+            name = self._normalize_name(raw_name)
+            if name in self._param_names:
+                return f"p_{name}"
+            return name
+        sql = re.sub(r"@([#]?[#]?\w+)", _rewrite_var, sql)
 
         return sql
 

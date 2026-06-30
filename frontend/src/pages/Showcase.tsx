@@ -283,7 +283,7 @@ export default function Showcase() {
                     ) : sceneResult.status === "error" ? (
                       <Alert
                         type="error"
-                        message="场景执行失败"
+                        title="场景执行失败"
                         description={
                           sceneResult.error || "未知错误"
                         }
@@ -371,7 +371,7 @@ function ShowcaseResultView({
       {result.diff_summary && (
         <Alert
           type={hasDiff ? "warning" : "success"}
-          message={result.diff_summary}
+          title={result.diff_summary}
           showIcon
           style={{ marginBottom: 16 }}
         />
@@ -443,7 +443,7 @@ function ShowcaseResultView({
       {scene.key_differences.length > 0 && (
         <Alert
           type="info"
-          message="⚠️ 已知差异点"
+          title="⚠️ 已知差异点"
           description={
             <ul style={{ margin: 0, paddingLeft: 20 }}>
               {scene.key_differences.map((d, i) => (
@@ -460,7 +460,7 @@ function ShowcaseResultView({
       {result.migration_insight && (
         <Alert
           type="success"
-          message="💡 迁移洞察 (Migration Insight)"
+          title="💡 迁移洞察 (Migration Insight)"
           description={
             <Paragraph
               style={{ margin: 0, whiteSpace: "pre-wrap" }}

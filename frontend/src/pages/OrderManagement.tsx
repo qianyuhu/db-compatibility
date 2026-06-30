@@ -265,7 +265,7 @@ export default function OrderManagement() {
           {/* Match Status */}
           <Alert
             type={result.equal ? "success" : "warning"}
-            message={
+            title={
               result.equal ? (
                 <span>
                   <CheckCircleOutlined /> 双库执行结果一致
@@ -300,7 +300,7 @@ export default function OrderManagement() {
                 {!result.source_result.success && (
                   <Alert
                     type="error"
-                    message={result.source_result.error}
+                    title={result.source_result.error}
                     style={{ marginTop: 8 }}
                   />
                 )}
@@ -319,7 +319,7 @@ export default function OrderManagement() {
                 {!result.target_result.success && (
                   <Alert
                     type="error"
-                    message={result.target_result.error}
+                    title={result.target_result.error}
                     style={{ marginTop: 8 }}
                   />
                 )}

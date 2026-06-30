@@ -273,12 +273,12 @@ class SPCompiler:
         Returns:
             Tuple of (name, parameters, body_text).
         """
-        # Match CREATE PROCEDURE header
+        # Match CREATE/ALTER PROCEDURE header
         # Pattern captures: full header up to AS, procedure name
         header_pattern = r"""
-            CREATE\s+(?:OR\s+ALTER\s+)?PROCEDURE\s+
-            (?:\[?[a-zA-Z_][a-zA-Z0-9_]*\]?\.)?   # optional schema
-            \[?([a-zA-Z_][a-zA-Z0-9_]*)\]?         # procedure name (capture group 1)
+            (?:CREATE\s+(?:OR\s+ALTER\s+)?|ALTER\s+)PROCEDURE\s+
+            (?:\[?[^\s\.\]]+\]?\.)?               # optional schema
+            \[?([^\s\(\]]+)\]?                     # procedure name (capture group 1)
             (.*?)                                    # parameters and options (capture group 2)
             \bAS\b\s*                                # AS keyword
         """
@@ -349,8 +349,11 @@ class SPCompiler:
         """
         text = param_text.strip()
 
-        # Find @variable
-        var_match = re.match(r"@(\w+)", text)
+        # Find @variable (may include # prefix like @##user)
+        var_match = re.match(r"@([#]?[#]?\w+)", text)
+        if not var_match:
+            # Try matching with leading # characters
+            var_match = re.match(r"@([#]+\w+)", text)
         if not var_match:
             return None
 
