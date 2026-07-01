@@ -1,8 +1,11 @@
-from .base import Repository
-from .customer import CustomerRepository
-from .inventory import InventoryRepository
-from .order import OrderRepository
-from .product import ProductRepository
+"""Re-export shim — canonical location: app.repository"""
+from app.repository import (  # noqa: F401
+    Repository,
+    ProductRepository,
+    CustomerRepository,
+    OrderRepository,
+    InventoryRepository,
+)
 
 __all__ = [
     "Repository",

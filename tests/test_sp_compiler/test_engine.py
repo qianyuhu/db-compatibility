@@ -502,3 +502,205 @@ class TestGeneratorFactory:
         from app.core.sp_compiler.generator import create_generator
         with pytest.raises(ValueError, match="No generator registered"):
             create_generator("unknown_db")
+
+
+# =========================================================================
+# T-SQL Enhancement Tests — @@ROWCOUNT, ISNUMERIC, TABLE vars, EXEC OUTPUT,
+# UPDATE FROM JOIN, case-insensitive function rewrites
+# =========================================================================
+
+
+class TestEnhancements:
+    """Tests for T-SQL → PL/pgSQL / DM generator enhancements."""
+
+    def test_rowcount_to_get_diagnostics_kingbasees(self):
+        """SET @var = @@ROWCOUNT → GET DIAGNOSTICS var = ROW_COUNT;"""
+        sp = """CREATE PROCEDURE test_rc AS
+BEGIN
+    DECLARE @cnt INT;
+    UPDATE t SET x = 1;
+    SET @cnt = @@ROWCOUNT;
+END"""
+        result = compile_sp(sp, "kingbasees")
+        assert result.success
+        assert "GET DIAGNOSTICS" in result.generated_code
+        assert "ROW_COUNT" in result.generated_code
+
+    def test_rowcount_to_v_rowcount_dm(self):
+        """SET @var = @@ROWCOUNT → var := v_rowcount; in DM."""
+        sp = """CREATE PROCEDURE test_rc AS
+BEGIN
+    DECLARE @cnt INT;
+    UPDATE t SET x = 1;
+    SET @cnt = @@ROWCOUNT;
+END"""
+        result = compile_sp(sp, "dm8")
+        assert result.success
+        assert "v_rowcount" in result.generated_code
+
+    def test_isnumeric_to_regex_kingbasees(self):
+        """ISNUMERIC(col) → CASE WHEN col ~ '^[+-]?...' THEN 1 ELSE 0 END."""
+        sp = """CREATE PROCEDURE test_isn AS
+BEGIN
+    DECLARE @cnt INT;
+    SET @cnt = ISNUMERIC('123');
+END"""
+        result = compile_sp(sp, "kingbasees")
+        assert result.success
+        assert "~ '" in result.generated_code or "CASE WHEN" in result.generated_code
+        assert "ISNUMERIC" not in result.generated_code.upper()
+
+    def test_isnumeric_to_regexp_like_dm(self):
+        """ISNUMERIC(col) → REGEXP_LIKE in DM."""
+        sp = """CREATE PROCEDURE test_isn AS
+BEGIN
+    DECLARE @cnt INT;
+    SET @cnt = ISNUMERIC('123');
+END"""
+        result = compile_sp(sp, "dm8")
+        assert result.success
+        assert "REGEXP_LIKE" in result.generated_code
+        assert "ISNUMERIC" not in result.generated_code.upper()
+
+    def test_table_variable_to_comment_kingbasees(self):
+        """DECLARE @t TABLE(...) → comment in PL/pgSQL."""
+        sp = """CREATE PROCEDURE test_tbl AS
+BEGIN
+    DECLARE @t TABLE(id INT, name NVARCHAR(50));
+    SELECT 1;
+END"""
+        result = compile_sp(sp, "kingbasees")
+        assert result.success
+        assert "TABLE variable" in result.generated_code
+        assert "CREATE TEMP TABLE" in result.generated_code
+
+    def test_table_variable_to_comment_dm(self):
+        """DECLARE @t TABLE(...) → comment in DM."""
+        sp = """CREATE PROCEDURE test_tbl AS
+BEGIN
+    DECLARE @t TABLE(id INT, name NVARCHAR(50));
+    SELECT 1;
+END"""
+        result = compile_sp(sp, "dm8")
+        assert result.success
+        assert "TABLE variable" in result.generated_code
+
+    def test_exec_output_to_call_kingbasees(self):
+        """EXEC sp @param OUTPUT → CALL sp(param) in PL/pgSQL."""
+        sp = """CREATE PROCEDURE test_exec AS
+BEGIN
+    DECLARE @p1 INT;
+    DECLARE @p2 NVARCHAR(50);
+    EXEC _CreateNo @user=1, @date=@p1 OUTPUT, @no=@p2 OUTPUT;
+END"""
+        result = compile_sp(sp, "kingbasees")
+        assert result.success
+        assert "CALL _CreateNo" in result.generated_code
+        assert "OUTPUT" not in result.generated_code.upper()
+
+    def test_update_from_comma_join_kingbasees(self):
+        """UPDATE ... FROM a, b WHERE ... → annotated with NOTE."""
+        sp = """CREATE PROCEDURE test_upd AS
+BEGIN
+    UPDATE a SET a.x = b.y FROM tableA a, tableB b WHERE a.id = b.id;
+END"""
+        result = compile_sp(sp, "kingbasees")
+        assert result.success
+        code = result.generated_code
+        # Should contain UPDATE and FROM with annotation
+        assert "UPDATE" in code
+        assert "FROM" in code
+
+    def test_update_from_join_kingbasees(self):
+        """UPDATE ... FROM t1 JOIN t2 ON ... → PostgreSQL UPDATE FROM WHERE."""
+        sp = """CREATE PROCEDURE test_upd_join AS
+BEGIN
+    UPDATE orders SET status = s.name FROM orders o JOIN statuses s ON o.sid = s.id;
+END"""
+        result = compile_sp(sp, "kingbasees")
+        assert result.success
+        code = result.generated_code
+        assert "UPDATE" in code
+        # JOIN should be converted to WHERE
+        assert "WHERE" in code
+
+    def test_case_insensitive_isnull_kingbasees(self):
+        """isnull() (lowercase) → COALESCE() in PL/pgSQL."""
+        sp = """CREATE PROCEDURE test_isnull AS
+BEGIN
+    DECLARE @cnt INT;
+    SET @cnt = 0;
+    IF isnull(@cnt, 0) > 0
+    BEGIN
+        SET @cnt = 1;
+    END;
+END"""
+        result = compile_sp(sp, "kingbasees")
+        assert result.success
+        # Check COALESCE replaced isnull in IF condition, not in procedure name
+        assert "COALESCE" in result.generated_code
+        assert "IF COALESCE(" in result.generated_code
+
+    def test_case_insensitive_isnull_dm(self):
+        """isnull() (lowercase) → NVL() in DM."""
+        sp = """CREATE PROCEDURE test_isnull AS
+BEGIN
+    DECLARE @cnt INT;
+    SET @cnt = 0;
+    IF isnull(@cnt, 0) > 0
+    BEGIN
+        SET @cnt = 1;
+    END;
+END"""
+        result = compile_sp(sp, "dm8")
+        assert result.success
+        assert "NVL" in result.generated_code
+
+    def test_dm_strips_hash_prefix(self):
+        """DM generator strips ## from variable and parameter names."""
+        sp = """CREATE PROCEDURE test_hash
+    @##user INT
+AS
+BEGIN
+    DECLARE @##userId INT;
+    SET @##userId = @##user;
+END"""
+        result = compile_sp(sp, "dm8")
+        assert result.success
+        # Parameter should be p_user not p_##user
+        assert "p_user" in result.generated_code
+        assert "##user" not in result.generated_code or "p_##user" not in result.generated_code
+
+    def test_complex_sp_compiles_successfully(self):
+        """Complex real-world SP compiles without errors."""
+        sp = """CREATE PROCEDURE complex_sp
+    @docCompany NVARCHAR(50),
+    @orderNo NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @current INT;
+    DECLARE @sumcount INT;
+    DECLARE @errorCount INT;
+    SET @errorCount = 0;
+    SET @current = 1;
+    UPDATE t SET flag = -1 WHERE doc = @docCompany;
+    SET @sumcount = @@ROWCOUNT;
+    IF @sumcount = 0
+    BEGIN
+        RETURN;
+    END;
+    WHILE @current <= @sumcount
+    BEGIN
+        SET @current = @current + 1;
+    END;
+    EXEC _Finalize @user = 1;
+END"""
+        result_kb = compile_sp(sp, "kingbasees")
+        assert result_kb.success
+        assert result_kb.errors == []
+        assert "GET DIAGNOSTICS" in result_kb.generated_code or "ROW_COUNT" in result_kb.generated_code
+
+        result_dm = compile_sp(sp, "dm8")
+        assert result_dm.success
+        assert result_dm.errors == []

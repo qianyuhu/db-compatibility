@@ -1,4 +1,8 @@
-"""Customer API Router — 客户主数据管理端点。"""
+"""Customer API Router — 客户主数据管理端点。
+
+# deprecated: Router 应只做 request parsing + service 调用 + response mapping。
+# 当前直接访问 Repository/Session，后续应通过 Service 层间接访问。
+"""
 
 from typing import Optional
 

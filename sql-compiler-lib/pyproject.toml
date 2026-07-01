@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sql-compiler"
+version = "0.2.0"
+description = "MSSQL → KingbaseES/DM8 Migration Toolkit — SQL Rewrite + SP Compiler"
+requires-python = ">=3.9"
+dependencies = [
+    "sqlglot>=25.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

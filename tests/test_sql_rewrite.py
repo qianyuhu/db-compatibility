@@ -124,14 +124,14 @@ class TestMssqlToKingbaseEsCorrectness:
     # -- NEWID → gen_random_uuid ---------------------------------------------
 
     def test_newid_to_gen_random_uuid(self):
+        """KingbaseES MSSQL compat mode: NEWID() preserved natively."""
         result = rewrite_sql(
             "INSERT INTO logs (id, message) VALUES (NEWID(), 'test')",
             source_db="mssql",
             target_db="kingbasees",
         )
-        assert "NEWID()" not in result.rewritten_sql
-        assert "gen_random_uuid()" in result.rewritten_sql
-        assert _result_contains_rule(result, "NEWID → gen_random_uuid")
+        assert "NEWID()" in result.rewritten_sql  # preserved in MSSQL compat
+        assert not _result_contains_rule(result, "NEWID → gen_random_uuid")
 
     # -- [brackets] → "quotes" ------------------------------------------------
 
@@ -161,24 +161,23 @@ class TestMssqlToKingbaseEsCorrectness:
     # -- DATEADD → INTERVAL ---------------------------------------------------
 
     def test_dateadd_day_to_interval(self):
+        """KingbaseES MSSQL compat mode: DATEADD preserved natively."""
         result = rewrite_sql(
             "SELECT DATEADD(DAY, 7, created_at) FROM products",
             source_db="mssql",
             target_db="kingbasees",
         )
-        assert "DATEADD" not in result.rewritten_sql
-        assert "INTERVAL '7' DAY" in result.rewritten_sql
-        assert _result_contains_rule(result, "DATEADD → + INTERVAL")
+        assert "DATEADD" in result.rewritten_sql  # preserved in MSSQL compat
+        assert not _result_contains_rule(result, "DATEADD → + INTERVAL")
 
     def test_dateadd_quarter_to_interval(self):
-        """Quarter should be converted to 3*N months."""
+        """KingbaseES MSSQL compat mode: DATEADD preserved natively."""
         result = rewrite_sql(
             "SELECT DATEADD(QUARTER, 2, created_at) FROM products",
             source_db="mssql",
             target_db="kingbasees",
         )
-        assert "DATEADD" not in result.rewritten_sql
-        assert "INTERVAL '6' MONTH" in result.rewritten_sql
+        assert "DATEADD" in result.rewritten_sql  # preserved in MSSQL compat
 
     # -- DATEDIFF → EXTRACT ---------------------------------------------------
 
@@ -228,14 +227,14 @@ class TestMssqlToKingbaseEsCorrectness:
     # -- DATEPART → EXTRACT ---------------------------------------------------
 
     def test_datepart_to_extract(self):
+        """KingbaseES MSSQL compat mode: DATEPART preserved natively."""
         result = rewrite_sql(
             "SELECT DATEPART(YEAR, created_at) FROM products",
             source_db="mssql",
             target_db="kingbasees",
         )
-        assert "DATEPART" not in result.rewritten_sql
-        assert "EXTRACT(YEAR FROM" in result.rewritten_sql
-        assert _result_contains_rule(result, "DATEPART → EXTRACT")
+        assert "DATEPART" in result.rewritten_sql  # preserved in MSSQL compat
+        assert not _result_contains_rule(result, "DATEPART → EXTRACT")
 
 
 # ===========================================================================
@@ -663,8 +662,8 @@ class TestRuleStructure:
 
     def test_rule_count_matches_spec(self):
         """Verify expected rule counts per direction pair."""
-        assert len(RULE_REGISTRY[("mssql", "kingbasees")]) == 14
-        assert len(RULE_REGISTRY[("mssql", "dm8")]) == 12
+        assert len(RULE_REGISTRY[("mssql", "kingbasees")]) == 23  # 33 PG rules - 11 skipped for MSSQL compat
+        assert len(RULE_REGISTRY[("mssql", "dm8")]) == 32
         assert len(RULE_REGISTRY[("kingbasees", "mssql")]) == 6
 
     def test_all_confidence_values_in_range(self):
@@ -897,7 +896,7 @@ class TestGetRules:
 
     def test_get_rules_known_pair(self):
         rules = get_rules("mssql", "kingbasees")
-        assert len(rules) == 14
+        assert len(rules) == 23  # MSSQL→KingbaseES MSSQL-compat filtered rules
 
     def test_get_rules_unknown_pair(self):
         rules = get_rules("dm8", "mssql")
